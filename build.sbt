@@ -7,6 +7,7 @@ resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/mo
 
 libraryDependencies ++= Seq(
   jdbc,
+  "com.jsuereth" % "scala-arm_2.11" % "1.4",
   "com.typesafe.slick" %% "slick" % "2.1.0",
   "com.typesafe.play" %% "play-slick" % "0.8.0",
   "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
