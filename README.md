@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/zalando/sprocrest.svg)](https://travis-ci.org/zalando/sprocrest)
+
 *This is a work in progress project*
 
 RESTful interface for the database stored procedures
