@@ -33,4 +33,4 @@ function get_bootstrap_script() {
     done
 }
 
-get_bootstrap_script | psql -h localhost -U postgres -d postgres -1
+get_bootstrap_script | psql -h localhost -U postgres -d postgres -f -
