@@ -1,14 +1,16 @@
 package controllers
 
+import java.io.StringWriter
 import java.sql.{ResultSet, Statement}
 
+import org.postgresql.util.PGobject
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
 import play.api.mvc.Controller
 
 import scala.collection.immutable.IndexedSeq
+import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
-import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
 
@@ -33,31 +35,45 @@ object RootController extends Controller {
     recurse()
   }
 
+  case class ResultSetIterator(rs: ResultSet) extends Iterator[PGobject] {
+    override def hasNext: Boolean = rs.next()
+
+    override def next(): PGobject = rs.getObject(1).asInstanceOf[PGobject]
+  }
+
   def get() = DBAction { implicit rs =>
+    import resource._
     import rs.dbSession.conn
 
-    val rows = Try {
-      val statement = conn.createStatement()
-      statement.execute(
-        """
-          |CREATE OR REPLACE FUNCTION setoffunc() RETURNS SETOF int
-          |AS 'SELECT 1 UNION SELECT 2;' LANGUAGE sql
-          | """.stripMargin.trim)
-      val resultSet = statement.executeQuery("SELECT * from setoffunc()")
-      resultStream(statement, resultSet) map { row =>
-        row.map {
-          case (name, value) => name -> value.toString
-        }
+    val result = for {
+      searchPathStmt <- managed(conn.createStatement())
+      _ = searchPathStmt.execute("set search_path to test_api, public")
+      statement <- managed(conn.createStatement())
+      resultSet <- managed(statement.executeQuery("select to_json((f.*)) from get_orders('00000001') as f"))
+    } yield {
+      val buffer = new ListBuffer[String]
+      while (resultSet.next()) {
+        buffer += resultSet.getObject(1).toString
       }
+      buffer
     }
 
-    rows match {
-      case Success(seq: Stream[Seq[(String, String)]]) => Ok(Json.toJson(seq.map(_.toMap)))
-      case Failure(error) => InternalServerError(views.json.error(unwrap(error).map(_.toString): _*))
+    result.map(identity).either match {
+      case Right(r) =>
+        Ok(Json.parse(r.mkString("[", ",", "]")))
+      case Left(e) =>
+        InternalServerError(views.json.error(e.map(stacktrace): _*))
     }
   }
 
   def unwrap(t: Throwable): List[Throwable] = t :: Option(t.getCause).map(unwrap).getOrElse(Nil)
+
+  def stacktrace(t: Throwable): String = {
+    import java.io.PrintWriter
+    val writer = new StringWriter()
+    t.printStackTrace(new PrintWriter(writer))
+    t.toString + "\n" + writer.toString
+  }
 }
 
 
