@@ -7,7 +7,7 @@ import play.api.libs.json.Json
 import scala.slick.driver.PostgresDriver.simple._
 
 
-case class TypeResult(oid: Int, namespace: String, name: String, arrayType: Option[Int], typ: String)
+case class TypeResult(namespace: String, name: String, arrayType: Option[Int], typ: String)
 
 object TypeResult {
   implicit val format = Json.format[TypeResult]
@@ -37,7 +37,7 @@ object PgTypes {
 
   import database.PgNamespaces.pgnamespaces
 
-  def getTypes(): Seq[TypeResult] = {
+  def getTypes(): Map[String, TypeResult] = {
     DB.withSession { implicit session =>
       val query = for {
         t <- pgtypes
@@ -48,8 +48,8 @@ object PgTypes {
       println(query.selectStatement)
       query.run.toIndexedSeq.map {
         case (oid, schema, name, array, typ) =>
-          TypeResult(oid, schema, name, if (array == 0) None else Some(array), typ)
-      }
+          oid.toString -> TypeResult(schema, name, if (array == 0) None else Some(array), typ)
+      }.toMap
     }
   }
 }

@@ -1,39 +1,15 @@
 package controllers
 
-import java.io.StringWriter
-import java.sql.{ResultSet, Statement}
-
-import database.{PgTypes, Catalog}
+import database.{Catalog, PgTypes}
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
 import play.api.mvc.{Action, Controller}
 
-import scala.collection.immutable.IndexedSeq
-import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
+import scala.slick.jdbc.GetResult
+import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
-
-  def resultStream(statement: Statement, resultSet: ResultSet): Stream[Seq[(String, AnyRef)]] = {
-    val rsmd = resultSet.getMetaData
-    val columns = rsmd.getColumnCount
-    val labels = for (i <- 1 to columns) yield rsmd.getColumnName(i)
-
-    def recurse(): Stream[Seq[(String, AnyRef)]] = {
-      if (resultSet.next()) {
-        val thisRow: IndexedSeq[(String, AnyRef)] = for (i <- 1 to columns) yield {
-          labels(i - 1) -> resultSet.getObject(i)
-        }
-        thisRow.toSeq #:: recurse()
-      } else {
-        resultSet.close()
-        statement.close()
-        Stream.empty
-      }
-    }
-
-    recurse()
-  }
 
   def catalog() = Action {
     Ok(Json.toJson(Catalog.catalog()))
@@ -44,37 +20,20 @@ object RootController extends Controller {
   }
 
   def get() = DBAction { implicit rs =>
-    import resource._
-    import rs.dbSession.conn
+    implicit val session = rs.dbSession
 
-    val result = for {
-      searchPathStmt <- managed(conn.createStatement())
-      _ = searchPathStmt.execute("set search_path to test_api, public")
-      statement <- managed(conn.createStatement())
-      resultSet <- managed(statement.executeQuery("select to_json((f.*)) from get_orders('00000001') as f"))
-    } yield {
-      val buffer = new ListBuffer[String]
-      while (resultSet.next()) {
-        buffer += resultSet.getObject(1).toString
-      }
-      buffer
+    import scala.slick.jdbc.StaticQuery._
+
+
+    Try {
+      sql"SET search_path TO test_api, PUBLIC".as[Boolean].list
+      implicit val getResult = GetResult(_.nextObject())
+      val objects = sql"SELECT to_json((f.*)) FROM get_orders('00000001') AS f".as[Object].list
+      Ok(Json.parse(objects.mkString("[", ",", "]")))
+    } match {
+      case Success(ok) => ok
+      case Failure(e) => InternalServerError(views.json.error(e.toString))
     }
-
-    result.map(identity).either match {
-      case Right(r) =>
-        Ok(Json.parse(r.mkString("[", ",", "]")))
-      case Left(e) =>
-        InternalServerError(views.json.error(e.map(stacktrace): _*))
-    }
-  }
-
-  def unwrap(t: Throwable): List[Throwable] = t :: Option(t.getCause).map(unwrap).getOrElse(Nil)
-
-  def stacktrace(t: Throwable): String = {
-    import java.io.PrintWriter
-    val writer = new StringWriter()
-    t.printStackTrace(new PrintWriter(writer))
-    t.toString + "\n" + writer.toString
   }
 }
 
