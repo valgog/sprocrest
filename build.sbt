@@ -4,6 +4,7 @@ scalaVersion := "2.11.4"
 scalacOptions ++= Seq("-feature", "-deprecation")
 
 resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/modules/releases/"))(Resolver.ivyStylePatterns)
+resolvers += "Typesafe Releases" at "http://repo.typesafe.com/typesafe/releases/"
 
 libraryDependencies ++= Seq(
   jdbc,
