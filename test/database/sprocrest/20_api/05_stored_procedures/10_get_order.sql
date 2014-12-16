@@ -12,7 +12,7 @@ BEGIN
     RETURN QUERY
     SELECT known_customer_number,
            to_char(o_id, 'FM000000000'),
-           ARRAY(select ROW('SKU-' || to_char(i_id, 'FM00000'), 'Article whithout description' )::order_item
+           ARRAY(select ROW('SKU-' || to_char(i_id, 'FM00000'), 'Article without description' )::order_item
                    from generate_series(1,5) as i(i_id)
                 )::order_item[],
            'INITIAL'::order_status,

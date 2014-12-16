@@ -4,17 +4,15 @@ import java.io.StringWriter
 import java.sql.{ResultSet, Statement}
 
 import database.Catalog
-import org.postgresql.util.PGobject
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
-import play.api.mvc.Controller
+import play.api.mvc.{Action, Controller}
 
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
-import scala.util.Try
 
-object RootController extends Controller with Catalog {
+object RootController extends Controller {
 
   def resultStream(statement: Statement, resultSet: ResultSet): Stream[Seq[(String, AnyRef)]] = {
     val rsmd = resultSet.getMetaData
@@ -37,10 +35,8 @@ object RootController extends Controller with Catalog {
     recurse()
   }
 
-  case class ResultSetIterator(rs: ResultSet) extends Iterator[PGobject] {
-    override def hasNext: Boolean = rs.next()
-
-    override def next(): PGobject = rs.getObject(1).asInstanceOf[PGobject]
+  def catalog() = Action {
+    Ok(Json.toJson(Catalog.catalog()))
   }
 
   def get() = DBAction { implicit rs =>

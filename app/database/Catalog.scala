@@ -1,37 +1,31 @@
 package database
 
-import play.api.db.DB
-import play.api.db.slick.{Session, DBAction}
+import play.api.db.slick.DB
 import play.api.libs.json.Json
-import play.api.mvc.Controller
 
 import scala.slick.jdbc.StaticQuery._
 import scala.slick.jdbc.{GetResult, PositionedResult}
 
-//case class CatalogRow(specific_schema: String, specific_name: String, ordinal_position: Int, parameter_name: String,
-//                      formatted_type_name: String, procedure_oid: Int, unformatted_type_name: String, type_oid: Int)
-//
-//object CatalogRow {
-//  implicit val mapper = GetResult[CatalogRow] {
-//    iter: PositionedResult =>
-//      CatalogRow(iter.nextString(), iter.nextString(), iter.nextInt(), iter.nextString(),
-//        iter.nextString(), iter.nextInt(), iter.nextString(), iter.nextInt())
-//
-//  }
-//  implicit val format = Json.format[CatalogRow]
-//}
+case class CatalogRow(specific_schema: String, specific_name: String, ordinal_position: Int, parameter_name: String,
+                      formatted_type_name: String, procedure_oid: Int, unformatted_type_name: String, type_oid: Int)
 
-trait Catalog {
-  self: Controller =>
+object CatalogRow {
+  implicit val mapper = GetResult[CatalogRow] {
+    iter: PositionedResult =>
+      CatalogRow(iter.nextString(), iter.nextString(), iter.nextInt(), iter.nextString(),
+        iter.nextString(), iter.nextInt(), iter.nextString(), iter.nextInt())
 
-  import play.api.Play.current
+  }
 
-  def catalog() = DBAction { implicit sessionRequest =>
-    implicit val session = sessionRequest.dbSession
+  implicit val format = Json.format[CatalogRow]
+}
 
-    type CatalogRow = (String, String, Int, String, String, Int, String, Int)
+object Catalog {
 
-    val result: List[CatalogRow] = DB.withTransaction { implicit connection =>
+  def catalog(): List[CatalogRow] = {
+    import play.api.Play.current
+
+    DB.withSession { implicit session =>
       sql"""SELECT ss.n_nspname AS specific_schema,
                    ss.proname::text AS specific_name,
                    (ss.x).n AS ordinal_position,
@@ -64,6 +58,5 @@ trait Catalog {
               AND t.typnamespace = nt.oid
               AND ss.proargmodes[(ss.x).n] = ANY ('{o,b,t}'::char[]);""".as[CatalogRow].list
     }
-    Ok(Json.toJson(result))
   }
 }
