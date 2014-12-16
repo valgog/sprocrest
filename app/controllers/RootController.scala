@@ -3,6 +3,7 @@ package controllers
 import java.io.StringWriter
 import java.sql.{ResultSet, Statement}
 
+import database.Catalog
 import org.postgresql.util.PGobject
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
@@ -11,8 +12,9 @@ import play.api.mvc.Controller
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
+import scala.util.Try
 
-object RootController extends Controller {
+object RootController extends Controller with Catalog {
 
   def resultStream(statement: Statement, resultSet: ResultSet): Stream[Seq[(String, AnyRef)]] = {
     val rsmd = resultSet.getMetaData

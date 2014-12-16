@@ -1,1 +1,3 @@
-GET        /        controllers.RootController.get()
+GET        /               controllers.RootController.get()
+GET        /catalog        controllers.RootController.catalog()
+
