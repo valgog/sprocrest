@@ -1,4 +1,4 @@
-CREATE FUNCTION get_orders(customer_number text)
+CREATE FUNCTION get_orders(customer_number text, ignored int)
 RETURNS TABLE (orders "order")
 AS $BODY$
 DECLARE

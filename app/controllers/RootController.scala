@@ -3,7 +3,7 @@ package controllers
 import database.{Catalog, PgTypes}
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
-import play.api.mvc.{Action, Controller}
+import play.api.mvc.{Action, Controller, Result}
 
 import scala.language.reflectiveCalls
 import scala.slick.jdbc.GetResult
@@ -13,6 +13,12 @@ object RootController extends Controller {
 
   def catalog() = Action {
     Ok(Json.toJson(Catalog.catalog()))
+  }
+
+  def catalogEntry(schema: String, name: String) = Action {
+    Catalog.catalogEntry(s"$schema/$name").fold(NotFound: Result) { entry =>
+      Ok(Json.toJson(entry))
+    }
   }
 
   def types() = Action {
@@ -28,13 +34,14 @@ object RootController extends Controller {
     Try {
       sql"SET search_path TO test_api, PUBLIC".as[Boolean].list
       implicit val getResult = GetResult(_.nextObject())
-      val objects = sql"SELECT to_json((f.*)) FROM get_orders('00000001') AS f".as[Object].list
+      val objects = sql"SELECT to_json((f.*)) FROM get_orders('00000001', 0) AS f".as[Object].list
       Ok(Json.parse(objects.mkString("[", ",", "]")))
     } match {
       case Success(ok) => ok
       case Failure(e) => InternalServerError(views.json.error(e.toString))
     }
   }
+
 }
 
 

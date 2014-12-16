@@ -31,6 +31,9 @@ object CatalogItem {
 
 object Catalog {
 
+  def catalogEntry(s: String): Option[CatalogItem] = catalog().get(s)
+
+
   def catalog(): Map[String, CatalogItem] = {
     import play.api.Play.current
 
