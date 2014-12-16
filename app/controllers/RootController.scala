@@ -3,7 +3,7 @@ package controllers
 import java.io.StringWriter
 import java.sql.{ResultSet, Statement}
 
-import database.Catalog
+import database.{PgTypes, Catalog}
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
 import play.api.mvc.{Action, Controller}
@@ -37,6 +37,10 @@ object RootController extends Controller {
 
   def catalog() = Action {
     Ok(Json.toJson(Catalog.catalog()))
+  }
+
+  def types() = Action {
+    Ok(Json.toJson(PgTypes.getTypes()))
   }
 
   def get() = DBAction { implicit rs =>

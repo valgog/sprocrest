@@ -56,6 +56,7 @@ object Catalog {
                   ) ss
             WHERE t.oid = (ss.x).x
               AND t.typnamespace = nt.oid
+              -- AND nt.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
               AND ss.proargmodes[(ss.x).n] = ANY ('{o,b,t}'::char[]);""".as[CatalogRow].list
     }
   }
