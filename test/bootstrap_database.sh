@@ -1,7 +1,7 @@
 #!/bin/bash
 
-readonly owner="sproctest"
-readonly databases="sproctest sproctest1 sproctest2"
+readonly owner="sprocrest"
+readonly databases="sprocrest sproctest1 sproctest2"
 
 readonly testdir="$( dirname $0 )"
 cd "${testdir}"

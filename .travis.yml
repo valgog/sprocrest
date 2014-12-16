@@ -6,4 +6,4 @@ jdk:
 addons:
     postgresql: "9.3"
 before_script:
-    - bash test/bootstrap.sh
+    - bash test/bootstrap_database.sh
