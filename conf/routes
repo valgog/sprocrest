@@ -2,4 +2,5 @@ GET        /                             controllers.RootController.get()
 GET        /catalog                      controllers.RootController.catalog()
 GET        /catalog/:schema/:name        controllers.RootController.catalogEntry(schema: String, name: String)
 GET        /types                        controllers.RootController.types()
+GET        /serializer                   controllers.RootController.serialize()
 

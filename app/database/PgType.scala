@@ -41,7 +41,7 @@ object PgTypes {
     DB.withSession { implicit session =>
       val query = for {
         t <- pgtypes
-        n <- pgnamespaces if t.namespace === n.oid && n.name =!= "pg_catalog" && n.name =!= "information_schema" && n.name =!= "pg_toast"
+        n <- pgnamespaces if t.namespace === n.oid /*&& n.name =!= "pg_catalog" && n.name =!= "information_schema" && n.name =!= "pg_toast"*/
       } yield {
         (t.oid, n.name, t.name, t.array, t.`type`)
       }

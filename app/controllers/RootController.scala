@@ -1,6 +1,7 @@
 package controllers
 
 import database.{Catalog, PgTypes}
+import de.zalando.typemapper.postgres.PgTypeHelper
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
 import play.api.mvc.{Action, Controller, Result}
@@ -40,6 +41,10 @@ object RootController extends Controller {
       case Success(ok) => ok
       case Failure(e) => InternalServerError(views.json.error(e.toString))
     }
+  }
+
+  def serialize() = DBAction { implicit rs =>
+    Ok(PgTypeHelper.toPgString(Array[String]("hello", "world")))
   }
 
 }
