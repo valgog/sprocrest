@@ -50,7 +50,6 @@ object Types {
       } yield {
         (t.oid, n.name, t.name, t.array, t.`type`)
       }
-      println(query.selectStatement)
       query.run.toIndexedSeq.map {
         case (oid, schema, name, array, typ) =>
           oid.toString -> TypeResult(schema, name, if (array == 0) None else Some(array), typ)

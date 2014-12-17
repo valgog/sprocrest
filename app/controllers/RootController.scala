@@ -6,6 +6,7 @@ import play.api.db.slick.DBAction
 import play.api.libs.json.Json
 import play.api.mvc.{Action, Controller, Result}
 
+import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
 import scala.slick.jdbc.{GetResult, PositionedResult}
 import scala.util.{Failure, Success, Try}
@@ -93,29 +94,31 @@ object RootController extends Controller {
           case (argName, argType: Long) =>
             Types.sqlConverter(argType)((request.body \\ argName).head)
         }
-        println(s"sqlArgs = $sqlArgs")
         val preparedStatement =
           s"""
              |SELECT to_json((f.*))
              |  FROM $name(${(1 to sqlArgs.size).map(_ => "?").mkString(",")})
              |    AS f
             """.stripMargin
-        println(s"preparedStatement = $preparedStatement")
-        val pathStatement = session.createStatement()
-        val pathResult = pathStatement.execute(s"SET search_path to $namespace, PUBLIC")
-        val statement = session.prepareStatement(preparedStatement)
-        sqlArgs.zipWithIndex.foreach {
-          case (arg: AnyRef, idx: Int) =>
-            statement.setObject(idx + 1, arg: Object)
+        import resource._
+        val operation = for {
+          pathStatement <- managed(session.createStatement())
+          pathResult = pathStatement.execute(s"SET search_path to $namespace, PUBLIC")
+          statement <- managed(session.prepareStatement(preparedStatement))
+          _ = sqlArgs.zipWithIndex.foreach { case (arg , idx ) => statement.setObject(idx + 1, arg: Object) }
+          resultSet <- managed(statement.executeQuery())
+        } yield {
+          val buffer = new ListBuffer[AnyRef]
+          while (resultSet.next()) {
+            buffer += resultSet.getObject(1)
+          }
+          buffer.toSeq
         }
-        val rs = statement.executeQuery()
 
-        println(s"rs = $rs")
-        while (rs.next()) {
-          println(s"result = ${rs.getObject(1)}")
+        operation.map(identity).either match {
+          case Right(seq: Seq[_]) => Ok(Json.parse(seq.mkString("[", ",", "]")))
+          case Left(e) => InternalServerError(views.json.error(e.map(_.toString):_*))
         }
-
-        Ok(Json.toJson("foo"))
     }.getOrElse(NotFound)
 
   }
