@@ -18,23 +18,22 @@ object CatalogRow {
   }
 }
 
-case class CatalogItem(position: Int, parameterName: String, formattedTypeName: String, procedureOid: Int,
+case class ProcItem(position: Int, parameterName: String, formattedTypeName: String, procedureOid: Int,
                        unformattedTypeName: String, typeOid: Int)
 
-object CatalogItem {
-  implicit val format = Json.format[CatalogItem]
-
-//  def apply(row: CatalogRow) = new CatalogItem(position = row.ordinal_position, parameterName = row.parameter_name,
-//    formattedTypeName = row.formatted_type_name, procedureOid = row.procedure_oid,
-//    unformattedTypeName = row.unformatted_type_name, typeOid = row.type_oid)
+object ProcItem {
+  implicit val format = Json.format[ProcItem]
 }
 
-object Catalog {
+object Procs {
 
-  def catalogEntry(s: String): Option[CatalogItem] = catalog().get(s)
+  def procEntry(s: String): Option[ProcItem] = procs().get(s)
 
+  def procsForNamespace(namespace: String): Seq[ProcItem] = {
+    procs().filterKeys(_.startsWith(s"$namespace/")).values.toSeq
+  }
 
-  def catalog(): Map[String, CatalogItem] = {
+  def procs(): Map[String, ProcItem] = {
     import play.api.Play.current
 
     DB.withSession { implicit session =>
@@ -72,7 +71,7 @@ object Catalog {
               AND ss.proargmodes[(ss.x).n] = ANY ('{o,b,t}'::char[]);""".as[CatalogRow].list
 
       rows.map { row =>
-        s"${row.specific_schema}/${row.specific_name}" -> new CatalogItem(position = row.ordinal_position, parameterName = row.parameter_name,
+        s"${row.specific_schema}/${row.specific_name}" -> new ProcItem(position = row.ordinal_position, parameterName = row.parameter_name,
           formattedTypeName = row.formatted_type_name, procedureOid = row.procedure_oid,
           unformattedTypeName = row.unformatted_type_name, typeOid = row.type_oid)
       }.toMap
