@@ -12,12 +12,11 @@ object StoredProcedureTypes {
   type OID = Long
   type Namespace = String
   type Name = String
-  type Path = (String, String)
 }
 
 import database.StoredProcedureTypes._
 
-case class Argument(name: Name, typeOid: OID)
+case class Argument(name: Name, typeOid: OID, hasDefault: Boolean, mode: String)
 
 object Argument {
   implicit val format = Json.format[Argument]
@@ -29,7 +28,7 @@ object Attribute {
   implicit val format = Json.format[Attribute]
 }
 
-case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Seq[Argument])
+case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Seq[Argument] = Seq.empty)
 
 object StoredProcedure {
   implicit val format = Json.format[StoredProcedure]
@@ -57,15 +56,15 @@ object StoredProcedures {
                 JOIN pg_attribute a ON a.attrelid = c.oid
                WHERE a.attnum > 0
                  AND NOT a.attisdropped
-                 AND c.relkind = ANY('{rvmcf}'::"char"[])
-               ORDER BY owning_type_oid, attribute_position;""".as[(OID, Name, Int, OID)] {
+                 AND c.relkind IN ('r', 'v', 'm', 'c', 'f')
+               ORDER BY owning_type_oid, attribute_position""".as[(OID, Name, Int, OID)] {
           GetResult[(OID, Name, Int, OID)] { case r => (r.<<, r.<<, r.<<, r.<<)}
         }.list.toSeq.groupBy(_._1).mapValues(v => v.sortBy(_._3))
       }
 
       // all types known to the system
       val dbTypes: Seq[DbType] = {
-        sql"""SELECT t.oid, nspname, typname, typarray, typtype
+        sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
                 FROM pg_type AS t, pg_namespace AS n
                WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)] {
           GetResult[(OID, Namespace, Name, OID, String)] { case r => (r.<<, r.<<, r.<<, r.<<, r.<<)}
@@ -89,6 +88,52 @@ object StoredProcedures {
   }
 
   def buildStoredProcedures(): Map[(Namespace, Name), StoredProcedure] = {
-    null
+    DB.withSession { implicit session =>
+
+      // this is a seq of all the fields of complex types
+      val argumentsByProcOID: Map[OID, Seq[Argument]] = {
+        sql"""SELECT prooid,
+                     row_number() OVER w AS position,
+                     row_number() OVER w > count(1) OVER w - pronargdefaults AS has_default,
+                     COALESCE(proargmodes[i], 'i') AS param_mode,
+                     proargnames[i] AS param_name,
+                     CASE WHEN proallargtypes IS NULL THEN proargtypes[i-1] ELSE proallargtypes[i] END AS param_type_oid
+                FROM (SELECT generate_subscripts(COALESCE(proallargtypes, proargtypes::oid[]), 1) + CASE WHEN proallargtypes IS NULL THEN 1 ELSE 0 END AS i,
+                             oid as prooid,
+                             proargnames,
+                             proallargtypes,
+                             proargtypes::oid[],
+                             proargmodes,
+                             pronargdefaults
+                        FROM pg_proc
+                       WHERE NOT proisagg
+                         AND NOT proiswindow
+                     ) a
+               WHERE proargmodes IS NULL OR proargmodes[i] NOT IN('o', 't')
+              WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)] {
+          GetResult { case r => (r.<<, r.<<, r.<<, r.<<, r.<<, r.<<)}
+        }.list.toSeq.groupBy(_._1).mapValues(v => v.sortBy(_._4)).mapValues { values =>
+          values.map {
+            case (_, _, hasDefault, mode, name, typeOID) =>
+              Argument(name, typeOID, hasDefault, mode)
+          }
+        }
+      }
+
+      sql"""SELECT p.oid AS proc_oid,
+                   nspname,
+                   proname
+              FROM pg_proc AS p
+              JOIN pg_namespace AS n ON p.pronamespace = n.oid
+             WHERE NOT proisagg
+               AND NOT proiswindow""".as[(OID, Namespace, Name)] {
+        GetResult { case r => (r.<<, r.<<, r.<<)}
+      }.list.toSeq.map {
+        case (procOID, procNamespace, procName) =>
+          StoredProcedure(procNamespace, procName, procOID,
+            argumentsByProcOID.getOrElse(procOID, Seq.empty)
+          )
+      } groupBy (v => (v.namespace, v.name)) mapValues (_.head)
+    }
   }
 }

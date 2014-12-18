@@ -24,15 +24,16 @@ object RootController extends Controller {
   def types3() = Action {
     Ok(Json.toJson(StoredProcedures.buildTypes().map(kv => kv._1.toString -> kv._2)))
   }
+
+  def procs() = Action {
+    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().map(kv => kv._1.toString -> kv._2)))
+  }
+
   def types2() = Action {
     Ok(Json.toJson(TypeAttributes.getTypes()))
   }
   def arguments() = Action {
     Ok(Json.toJson(Arguments.loadArgDescriptions()))
-  }
-
-  def procs() = Action {
-    Ok(Json.toJson(Procs.procs()))
   }
 
   def procEntry(namespace: String, name: String) = Action {
