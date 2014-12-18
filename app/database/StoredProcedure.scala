@@ -36,7 +36,7 @@ object StoredProcedure {
 }
 
 
-case class DbType(namespace: Namespace, name: Name, typeOid: OID, arrayOid: Option[OID],
+case class DbType(namespace: Namespace, name: Name, typeOid: OID, arrayOid: Option[OID], containedType: Option[OID],
                   typeChar: String, attributes: Option[Seq[Attribute]] = None)
 
 object DbType {
@@ -46,6 +46,17 @@ object DbType {
 object StoredProcedures {
   def loadTypes(): Map[OID, DbType] = {
     DB.withSession { implicit session =>
+
+      // load all types known to the system
+      val dbTypes: Seq[DbType] = {
+        sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
+                FROM pg_type AS t, pg_namespace AS n
+               WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)].list.toSeq.map {
+          case (typeOid, namespace, name, arrayOid, typeChar) =>
+            DbType(namespace = namespace, name = name, typeOid = typeOid,
+              arrayOid = if (arrayOid == (0: OID)) None else Some(arrayOid), None, typeChar)
+        }
+      }
 
       // load all the attributes of complex types
       val attributesByOwner: Map[OID, Seq[(OID, Name, Int, OID)]] = {
@@ -63,26 +74,31 @@ object StoredProcedures {
           mapValues(v => v.sortBy(_._3))
       }
 
-      // load all types known to the system
-      val dbTypes: Seq[DbType] = {
-        sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
-                FROM pg_type AS t, pg_namespace AS n
-               WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)].list.toSeq.map {
-          case (typeOid, namespace, name, arrayOid, typeChar) =>
-            DbType(namespace = namespace, name = name, typeOid = typeOid,
-              arrayOid = if (arrayOid == (0: OID)) None else Some(arrayOid), typeChar)
-        }
-      }
-
       // populate complex types with their attributes
-      dbTypes.groupBy(_.typeOid).mapValues { values =>
-        require(values.size == 1, s"Found duplicate OID: $values")
-        val dbType = values.head
+      val withAttributes: Seq[DbType] = dbTypes.map { dbType =>
         val attrTuples: Seq[(OID, Name, Int, OID)] = attributesByOwner.getOrElse(dbType.typeOid, Seq.empty)
         val attrs = attrTuples.map {
           case (parentOid, name, pos, typeOid) => Attribute(name, typeOid)
         }
         if (attrs.nonEmpty) dbType.copy(attributes = Some(attrs)) else dbType
+      }
+
+      // build a map of array oid -> type it contains
+      val arrayOidToTypeOid: Map[OID, Option[OID]] =
+        withAttributes.filter(_.arrayOid.isDefined).map(dbType => dbType.arrayOid.get -> Some(dbType.typeOid)).toMap
+
+      // inject the reference to the contained type into each array type
+      val typesWithArrays = dbTypes.map { dbType =>
+        arrayOidToTypeOid.get(dbType.typeOid).map(contained => dbType.copy(containedType = contained)).getOrElse(dbType)
+      }
+
+      // group into a map so we can lookup types by oid
+      val grouped: Map[OID, Seq[DbType]] = typesWithArrays.groupBy(_.typeOid)
+
+      // reduce to a map of oid -> dbType, and make sure there is exactly 1 type for each OID
+      grouped.map { case (oid, values) =>
+        require(values.size == 1, s"Type $oid has multiple values: [$values]")
+        oid -> values.head
       }
     }
   }
