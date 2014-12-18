@@ -6,4 +6,5 @@ GET         /types                         controllers.RootController.types()
 GET         /types/:id                     controllers.RootController.typeOf(id: Int)
 GET         /serializer                    controllers.RootController.serialize()
 POST        /call/:namespace/:name         controllers.RootController.call(namespace: String, name: String)
+GET         /arguments                     controllers.RootController.arguments()
 

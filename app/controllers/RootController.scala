@@ -1,6 +1,6 @@
 package controllers
 
-import database.{Types, Procs}
+import database.{Arguments, Types, Procs}
 import de.zalando.typemapper.postgres.PgTypeHelper
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
@@ -20,6 +20,10 @@ object ProcDesc {
 }
 
 object RootController extends Controller {
+
+  def arguments() = Action {
+    Ok(Json.toJson(Arguments.loadArgDescriptions()))
+  }
 
   def procs() = Action {
     Ok(Json.toJson(Procs.procs()))
