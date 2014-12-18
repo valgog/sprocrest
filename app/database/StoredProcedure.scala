@@ -4,7 +4,6 @@ import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json.Json
 
-import scala.collection.immutable
 import scala.slick.jdbc.GetResult
 import scala.slick.jdbc.StaticQuery.interpolation
 
@@ -57,18 +56,16 @@ object StoredProcedures {
                WHERE a.attnum > 0
                  AND NOT a.attisdropped
                  AND c.relkind IN ('r', 'v', 'm', 'c', 'f')
-               ORDER BY owning_type_oid, attribute_position""".as[(OID, Name, Int, OID)] {
-          GetResult[(OID, Name, Int, OID)] { case r => (r.<<, r.<<, r.<<, r.<<)}
-        }.list.toSeq.groupBy(_._1).mapValues(v => v.sortBy(_._3))
+               ORDER BY owning_type_oid, attribute_position""".as[(OID, Name, Int, OID)].
+          list.toSeq.groupBy(_._1).
+          mapValues(v => v.sortBy(_._3))
       }
 
       // all types known to the system
       val dbTypes: Seq[DbType] = {
         sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
                 FROM pg_type AS t, pg_namespace AS n
-               WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)] {
-          GetResult[(OID, Namespace, Name, OID, String)] { case r => (r.<<, r.<<, r.<<, r.<<, r.<<)}
-        }.list.toSeq.map {
+               WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)].list.toSeq.map {
           case (typeOid, namespace, name, arrayOid, typeChar) =>
             DbType(namespace = namespace, name = name, typeOid = typeOid,
               arrayOid = if (arrayOid == (0: OID)) None else Some(arrayOid), typeChar)
@@ -87,7 +84,7 @@ object StoredProcedures {
     }
   }
 
-  def buildStoredProcedures(): Map[(Namespace, Name), StoredProcedure] = {
+  def buildStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
     DB.withSession { implicit session =>
 
       // this is a seq of all the fields of complex types
@@ -110,9 +107,10 @@ object StoredProcedures {
                          AND NOT proiswindow
                      ) a
                WHERE proargmodes IS NULL OR proargmodes[i] NOT IN('o', 't')
-              WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)] {
-          GetResult { case r => (r.<<, r.<<, r.<<, r.<<, r.<<, r.<<)}
-        }.list.toSeq.groupBy(_._1).mapValues(v => v.sortBy(_._4)).mapValues { values =>
+              WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq.
+          groupBy(_._1).
+          mapValues(v => v.sortBy(_._4)).
+          mapValues { values =>
           values.map {
             case (_, _, hasDefault, mode, name, typeOID) =>
               Argument(name, typeOID, hasDefault, mode)
@@ -126,14 +124,12 @@ object StoredProcedures {
               FROM pg_proc AS p
               JOIN pg_namespace AS n ON p.pronamespace = n.oid
              WHERE NOT proisagg
-               AND NOT proiswindow""".as[(OID, Namespace, Name)] {
-        GetResult { case r => (r.<<, r.<<, r.<<)}
-      }.list.toSeq.map {
+               AND NOT proiswindow""".as[(OID, Namespace, Name)].list.toSeq.map {
         case (procOID, procNamespace, procName) =>
           StoredProcedure(procNamespace, procName, procOID,
             argumentsByProcOID.getOrElse(procOID, Seq.empty)
           )
-      } groupBy (v => (v.namespace, v.name)) mapValues (_.head)
+      } groupBy (v => (v.namespace, v.name))
     }
   }
 }
