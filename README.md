@@ -14,9 +14,9 @@ PostgreSQL database provides a very powerful framework for developing parts of b
 Advanced stored procedure languages are available, starting from the original pl/pgsql and finishing with pl/python and pl/v8 and event pl/R.
 Zalando Technology gathered a lot of experience successfully deploying thousands of stored procedures per week on the production servers.
 Java developers can easily call stored procedures as if they ware native RPC function calls
-(see (Stored Procedure Wrapper)[https://github.com/zalando/java-sproc-wrapper] for more details).
+(see [Stored Procedure Wrapper](https://github.com/zalando/java-sproc-wrapper) for more details).
 Stored procedure deployment process is also completely automated and is transparent for developers thanks to the
-(schema based stored procedure API deployment process)[http://tech.valgog.com/2012/01/schema-based-versioning-and-deployment.html].
+[schema based stored procedure API deployment process](http://tech.valgog.com/2012/01/schema-based-versioning-and-deployment.html).
 But as in many cases, Java application becomes a mere transport layer between the database and the client. To automate the process of the
 
 So the main idea of this project is to make things even easier and convert PostgreSQL server to a real application server with RESTful API exposed.
