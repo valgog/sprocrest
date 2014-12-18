@@ -26,6 +26,7 @@ case class DbType(namespace: Namespace, name: Name, typeOid: OID, arrayOid: Opti
 
 object StoredProcedures {
   def buildTypes(): Map[OID, DbType] = {
+    implicit val gr = GetResult[(OID, Name, Int, OID)] { case r => (r.<<, r.<<, r.<<, r.<<) }
     DB.withSession { implicit session =>
 
       val attributes = sql"""
@@ -45,6 +46,7 @@ object StoredProcedures {
 
       val attributesByOid: Map[OID, Seq[(OID, Name, Int, OID)]] = attributes.groupBy(_._1).mapValues(v => v.sortBy(_._3))
 
+      implicit val gr2 = GetResult[(OID, Namespace, Name, OID, String)] { case r => (r.<<, r.<<, r.<<, r.<<, r.<<) }
       val typeRows = sql"""
 
       SELECT t.oid, nspname, typname, typarray, typtype
@@ -71,6 +73,6 @@ object StoredProcedures {
   }
 
   def buildStoredProcedures(): Map[(Namespace, Name), StoredProcedure] = {
-
+    null
   }
 }

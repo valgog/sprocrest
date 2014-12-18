@@ -106,15 +106,15 @@ object Types {
 }
 
 
-case class Namespace(oid: Int, name: String)
+case class NamespaceHolder(oid: Int, name: String)
 
-class Namespaces(tag: Tag) extends Table[Namespace](tag, "pg_namespace") {
+class Namespaces(tag: Tag) extends Table[NamespaceHolder](tag, "pg_namespace") {
 
   def oid = column[Int]("oid")
 
   def name = column[String]("nspname")
 
-  def * = (oid, name) <>(Namespace.tupled, Namespace.unapply)
+  def * = (oid, name) <>(NamespaceHolder.tupled, NamespaceHolder.unapply)
 }
 
 object Namespaces {
