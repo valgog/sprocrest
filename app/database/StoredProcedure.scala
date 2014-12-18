@@ -30,7 +30,7 @@ object Attribute {
   implicit val format = Json.format[Attribute]
 }
 
-case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Seq[Argument] = Seq.empty)
+case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Option[Seq[Argument]])
 
 object StoredProcedure {
   implicit val format = Json.format[StoredProcedure]
@@ -38,7 +38,7 @@ object StoredProcedure {
 
 
 case class DbType(namespace: Namespace, name: Name, typeOid: OID, arrayOid: Option[OID],
-                  typeChar: String, attributes: Seq[Attribute] = Seq.empty)
+                  typeChar: String, attributes: Option[Seq[Attribute]] = None)
 
 object DbType {
   implicit val format = Json.format[DbType]
@@ -82,7 +82,7 @@ object StoredProcedures {
         val attrs = attrTuples.map {
           case (parentOid, name, pos, typeOid) => Attribute(name, typeOid)
         }
-        dbType.copy(attributes = attrs)
+        if (attrs.nonEmpty) dbType.copy(attributes = Some(attrs)) else dbType
       }
     }
   }
@@ -128,9 +128,7 @@ object StoredProcedures {
              WHERE NOT proisagg
                AND NOT proiswindow""".as[(OID, Namespace, Name)].list.toSeq.map {
         case (procOID, procNamespace, procName) =>
-          StoredProcedure(procNamespace, procName, procOID,
-            argumentsByProcOID.getOrElse(procOID, Seq.empty)
-          )
+          StoredProcedure(procNamespace, procName, procOID, argumentsByProcOID.get(procOID).filter(_.nonEmpty))
       } groupBy (v => (v.namespace, v.name))
     }
   }
