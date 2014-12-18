@@ -2,6 +2,7 @@ package database
 
 import java.sql.Timestamp
 
+import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json.{JsNumber, JsString, JsValue, Json}
@@ -46,7 +47,7 @@ object StoredProcedures {
   def loadTypes(): Map[OID, DbType] = {
     DB.withSession { implicit session =>
 
-      // this is a seq of all the fields of complex types
+      // load all the attributes of complex types
       val attributesByOwner: Map[OID, Seq[(OID, Name, Int, OID)]] = {
         sql"""SELECT c.reltype AS owning_type_oid,
                      a.attname AS attribute_name,
@@ -62,7 +63,7 @@ object StoredProcedures {
           mapValues(v => v.sortBy(_._3))
       }
 
-      // all types known to the system
+      // load all types known to the system
       val dbTypes: Seq[DbType] = {
         sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
                 FROM pg_type AS t, pg_namespace AS n
@@ -73,6 +74,7 @@ object StoredProcedures {
         }
       }
 
+      // populate complex types with their attributes
       dbTypes.groupBy(_.typeOid).mapValues { values =>
         require(values.size == 1, s"Found duplicate OID: $values")
         val dbType = values.head
@@ -88,7 +90,7 @@ object StoredProcedures {
   def loadStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
     DB.withSession { implicit session =>
 
-      // this is a seq of all the fields of complex types
+      // build a map of procId to a list of that proc's arguments
       val argumentsByProcOID: Map[OID, Seq[Argument]] = {
         val rows =
           sql"""SELECT prooid,
@@ -118,6 +120,7 @@ object StoredProcedures {
         }
       }
 
+      // load all stored procedures, and inject each ones arguments, if any
       sql"""SELECT p.oid AS proc_oid,
                    nspname,
                    proname
@@ -131,50 +134,52 @@ object StoredProcedures {
     }
   }
 
+  val simpleTypeConverter: PartialFunction[String, JsValue => AnyRef] = {
+    case "int2" => {
+      case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct an int2 from $other")
+    }
+    case "int4" => {
+      case number: JsNumber => number.value.toInt.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct an int4 from $other")
+    }
+    case "oid" | "int8" => {
+      case number: JsNumber => number.value.toLong.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct an int8 from $other")
+    }
+    case "numeric" | "decimal" => (value: JsValue) => value match {
+      case number: JsNumber => number.value
+      case other => sys.error(s"Cannot construct an double from $other")
+    }
+    case "float4" => {
+      case number: JsNumber => number.value.toFloat.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct a float from $other")
+    }
+    case "float8" | "money" => {
+      case number: JsNumber => number.value.toDouble.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct a double from $other")
+    }
+    case "bpchar" => {
+      case number: JsNumber => number.value.toChar.asInstanceOf[AnyRef]
+      case other => sys.error(s"Cannot construct a char from $other")
+    }
+    case "varchar" | "text" | "name" => {
+      case number: JsString => number.value
+      case other => sys.error(s"Cannot construct a string from $other")
+    }
+    case "time" | "timetz" => {
+      case number: JsString => new java.sql.Date(dateTime.parseDateTime(number.value).toDate.getTime)
+      case other => sys.error(s"Cannot construct a string from $other")
+    }
+    case "timestamp" | "timestamptz" => {
+      case number: JsString => new Timestamp(dateTime.parseDateTime(number.value).toDate.getTime)
+      case other => sys.error(s"Cannot construct a string from $other")
+    }
+  }
+
   def sqlConverter(argType: Long): JsValue => AnyRef = {
-    import org.joda.time.format.ISODateTimeFormat.dateTime
     val types: Map[OID, DbType] = loadTypes()
-    types.get(argType: OID).map(_.name).map {
-      case "int2" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct an int2 from $other")
-      }
-      case "int4" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toInt.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct an int4 from $other")
-      }
-      case "oid" | "int8" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toLong.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct an int8 from $other")
-      }
-      case "numeric" | "decimal" => (value: JsValue) => value match {
-        case number: JsNumber => number.value
-        case other => sys.error(s"Cannot construct an double from $other")
-      }
-      case "float4" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toFloat.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct a float from $other")
-      }
-      case "float8" | "money" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toDouble.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct a double from $other")
-      }
-      case "bpchar" => (value: JsValue) => value match {
-        case number: JsNumber => number.value.toChar.asInstanceOf[AnyRef]
-        case other => sys.error(s"Cannot construct a char from $other")
-      }
-      case "varchar" | "text" | "name" => (value: JsValue) => value match {
-        case number: JsString => number.value
-        case other => sys.error(s"Cannot construct a string from $other")
-      }
-      case "time" | "timetz" => (value: JsValue) => value match {
-        case number: JsString => new java.sql.Date(dateTime.parseDateTime(number.value).toDate.getTime)
-        case other => sys.error(s"Cannot construct a string from $other")
-      }
-      case "timestamp" | "timestamptz" => (value: JsValue) => value match {
-        case number: JsString => new Timestamp(dateTime.parseDateTime(number.value).toDate.getTime)
-        case other => sys.error(s"Cannot construct a string from $other")
-      }
-    }.getOrElse(sys.error(s"Unknown type $argType"))
+    val argName = types.get(argType: OID).map(_.name).getOrElse(sys.error(s"Unknown type $argType"))
+    (simpleTypeConverter orElse sys.error(s"No converter found for $argName"))(argName)
   }
 }
