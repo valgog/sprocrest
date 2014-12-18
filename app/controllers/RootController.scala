@@ -1,6 +1,6 @@
 package controllers
 
-import database.{TypeAttributes, Arguments, Types, Procs}
+import database._
 import de.zalando.typemapper.postgres.PgTypeHelper
 import play.api.db.slick.DBAction
 import play.api.libs.json.Json
@@ -21,6 +21,9 @@ object ProcDesc {
 
 object RootController extends Controller {
 
+  def types3() = Action {
+    Ok(Json.toJson(StoredProcedures.buildTypes().map(kv => kv._1.toString -> kv._2)))
+  }
   def types2() = Action {
     Ok(Json.toJson(TypeAttributes.getTypes()))
   }

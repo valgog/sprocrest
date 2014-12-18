@@ -8,4 +8,5 @@ GET         /types/:id                     controllers.RootController.typeOf(id:
 GET         /serializer                    controllers.RootController.serialize()
 POST        /call/:namespace/:name         controllers.RootController.call(namespace: String, name: String)
 GET         /arguments                     controllers.RootController.arguments()
+GET         /types3                        controllers.RootController.types3()
 
