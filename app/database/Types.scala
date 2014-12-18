@@ -10,18 +10,18 @@ import play.api.libs.json.{JsString, JsNumber, JsValue, Json}
 import scala.slick.driver.PostgresDriver.simple._
 
 
-case class TypeResult(namespace: String, name: String, arrayType: Option[Int], `type`: String)
+case class TypeRecord(namespace: String, name: String, arrayType: Option[Int], `type`: String)
 
-object TypeResult {
-  implicit val format = Json.format[TypeResult]
+object TypeRecord {
+  implicit val format = Json.format[TypeRecord]
 }
 
-case class Type(oid: Int, name: String, namespace: Int, `type`: String, array: Int)
+case class Type(oid: Long, name: String, namespace: Int, `type`: String, array: Int)
 
 
 class Types(tag: Tag) extends Table[Type](tag, "pg_type") {
 
-  def oid = column[Int]("oid")
+  def oid = column[Long]("oid")
 
   def name = column[String]("typname")
 
@@ -42,17 +42,18 @@ object Types {
 
   import database.Namespaces.pgnamespaces
 
-  def getTypes(): Map[String, TypeResult] = {
+  def getTypes(): Map[String, TypeRecord] = {
     DB.withSession { implicit session =>
       val query = for {
         t <- pgtypes
-        n <- pgnamespaces if t.namespace === n.oid /*&& n.name =!= "pg_catalog" && n.name =!= "information_schema" && n.name =!= "pg_toast"*/
+        n <- pgnamespaces if t.namespace === n.oid 
       } yield {
         (t.oid, n.name, t.name, t.array, t.`type`)
       }
+      println(query.selectStatement)
       query.run.toIndexedSeq.map {
         case (oid, schema, name, array, typ) =>
-          oid.toString -> TypeResult(schema, name, if (array == 0) None else Some(array), typ)
+          oid.toString -> TypeRecord(schema, name, if (array == 0) None else Some(array), typ)
       }.toMap
     }
   }
