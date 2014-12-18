@@ -1,5 +1,6 @@
 package controllers
 
+import database.StoredProcedureTypes.OID
 import database._
 import de.zalando.typemapper.postgres.PgTypeHelper
 import play.api.db.slick.DBAction
@@ -21,17 +22,21 @@ object ProcDesc {
 
 object RootController extends Controller {
 
-  def types3() = Action {
+  def types() = Action {
     Ok(Json.toJson(StoredProcedures.buildTypes().map(kv => kv._1.toString -> kv._2)))
+  }
+
+  def typeOf(id: Long) = Action {
+    val allTypes: Map[OID, DbType] = StoredProcedures.buildTypes()
+    allTypes.get(id: OID).fold(NotFound: Result) { typ =>
+      Ok(Json.toJson(typ))
+    }
   }
 
   def procs() = Action {
     Ok(Json.toJson(StoredProcedures.buildStoredProcedures().map(kv => kv._1.toString -> kv._2)))
   }
 
-  def types2() = Action {
-    Ok(Json.toJson(TypeAttributes.getTypes()))
-  }
   def arguments() = Action {
     Ok(Json.toJson(Arguments.loadArgDescriptions()))
   }
@@ -46,15 +51,6 @@ object RootController extends Controller {
     Ok(Json.toJson(Procs.procsForNamespace(namespace)))
   }
 
-  def types() = Action {
-    Ok(Json.toJson(Types.getTypes()))
-  }
-
-  def typeOf(id: Int) = Action {
-    Types.getTypeOf(id).fold(NotFound: Result) { typ =>
-      Ok(Json.toJson(typ))
-    }
-  }
 
   def get() = DBAction { implicit rs =>
     implicit val session = rs.dbSession
@@ -103,7 +99,7 @@ object RootController extends Controller {
 
         val sqlArgs: Seq[AnyRef] = args.map {
           case (argName, argType: Long) =>
-            Types.sqlConverter(argType)((request.body \\ argName).head)
+            StoredProcedures.sqlConverter(argType)((request.body \\ argName).head)
         }
         val preparedStatement =
           s"""

@@ -1,8 +1,11 @@
 package database
 
+import java.sql.Timestamp
+
+import org.joda.time.format.ISODateTimeFormat
 import play.api.Play.current
 import play.api.db.slick.DB
-import play.api.libs.json.Json
+import play.api.libs.json.{JsString, JsNumber, JsValue, Json}
 
 import scala.slick.jdbc.GetResult
 import scala.slick.jdbc.StaticQuery.interpolation
@@ -130,5 +133,52 @@ object StoredProcedures {
           )
       } groupBy (v => (v.namespace, v.name))
     }
+  }
+
+  def sqlConverter(argType: Long): JsValue => AnyRef = {
+    import ISODateTimeFormat.dateTime
+    val types: Map[OID, DbType] = buildTypes()
+    types.get(argType:OID).map(_.name).map {
+      case "int2" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct an int2 from $other")
+      }
+      case "int4" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toInt.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct an int4 from $other")
+      }
+      case "oid" | "int8" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toLong.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct an int8 from $other")
+      }
+      case "numeric"|"decimal" => (value: JsValue) => value match {
+        case number: JsNumber => number.value
+        case other => sys.error(s"Cannot construct an double from $other")
+      }
+      case "float4" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toFloat.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct a float from $other")
+      }
+      case "float8"|"money" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toDouble.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct a double from $other")
+      }
+      case "bpchar" => (value: JsValue) => value match {
+        case number: JsNumber => number.value.toChar.asInstanceOf[AnyRef]
+        case other => sys.error(s"Cannot construct a char from $other")
+      }
+      case "varchar"|"text"|"name" => (value: JsValue) => value match {
+        case number: JsString => number.value
+        case other => sys.error(s"Cannot construct a string from $other")
+      }
+      case "time" | "timetz" => (value: JsValue) => value match {
+        case number: JsString => new java.sql.Date(dateTime.parseDateTime(number.value).toDate.getTime)
+        case other => sys.error(s"Cannot construct a string from $other")
+      }
+      case "timestamp" | "timestamptz" => (value: JsValue) => value match {
+        case number: JsString => new Timestamp(dateTime.parseDateTime(number.value).toDate.getTime)
+        case other => sys.error(s"Cannot construct a string from $other")
+      }
+    }.getOrElse(sys.error(s"Unknown type $argType"))
   }
 }
