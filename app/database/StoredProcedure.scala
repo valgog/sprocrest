@@ -89,31 +89,30 @@ object StoredProcedures {
 
       // this is a seq of all the fields of complex types
       val argumentsByProcOID: Map[OID, Seq[Argument]] = {
-        sql"""SELECT prooid,
-                     row_number() OVER w AS position,
-                     row_number() OVER w > count(1) OVER w - pronargdefaults AS has_default,
-                     COALESCE(proargmodes[i], 'i') AS param_mode,
-                     proargnames[i] AS param_name,
-                     CASE WHEN proallargtypes IS NULL THEN proargtypes[i-1] ELSE proallargtypes[i] END AS param_type_oid
-                FROM (SELECT generate_subscripts(COALESCE(proallargtypes, proargtypes::oid[]), 1) + CASE WHEN proallargtypes IS NULL THEN 1 ELSE 0 END AS i,
-                             oid as prooid,
-                             proargnames,
-                             proallargtypes,
-                             proargtypes::oid[],
-                             proargmodes,
-                             pronargdefaults
-                        FROM pg_proc
-                       WHERE NOT proisagg
-                         AND NOT proiswindow
-                     ) a
-               WHERE proargmodes IS NULL OR proargmodes[i] NOT IN('o', 't')
-              WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq.
-          groupBy(_._1).
-          mapValues(v => v.sortBy(_._4)).
-          mapValues { values =>
-          values.map {
-            case (_, _, hasDefault, mode, name, typeOID) =>
-              Argument(name, typeOID, hasDefault, mode)
+        val rows =
+          sql"""SELECT prooid,
+                       row_number() OVER w AS position,
+                       row_number() OVER w > count(1) OVER w - pronargdefaults AS has_default,
+                       COALESCE(proargmodes[i], 'i') AS param_mode,
+                       proargnames[i] AS param_name,
+                       CASE WHEN proallargtypes IS NULL THEN proargtypes[i-1] ELSE proallargtypes[i] END AS param_type_oid
+                  FROM (SELECT generate_subscripts(COALESCE(proallargtypes, proargtypes::OID[]), 1) + CASE WHEN proallargtypes IS NULL THEN 1 ELSE 0 END AS i,
+                               oid AS prooid,
+                               proargnames,
+                               proallargtypes,
+                               proargtypes::OID[],
+                               proargmodes,
+                               pronargdefaults
+                          FROM pg_proc
+                         WHERE NOT proisagg
+                           AND NOT proiswindow
+                       ) a
+                 WHERE proargmodes IS NULL OR proargmodes[i] NOT IN('o', 't')
+                WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq
+
+        rows.groupBy(_._1).mapValues {
+          _.sortBy(_._2).map {
+            case (_, _, hasDefault, mode, name, typeOID) => Argument(name, typeOID, hasDefault, mode)
           }
         }
       }
