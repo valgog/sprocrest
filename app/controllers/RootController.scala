@@ -23,24 +23,24 @@ object ProcDesc {
 object RootController extends Controller {
 
   def types() = Action {
-    Ok(Json.toJson(StoredProcedures.buildTypes().map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.loadTypes().map(kv => kv._1.toString -> kv._2)))
   }
 
   def typeOf(id: Long) = Action {
-    val allTypes: Map[OID, DbType] = StoredProcedures.buildTypes()
+    val allTypes: Map[OID, DbType] = StoredProcedures.loadTypes()
     allTypes.get(id: OID).fold(NotFound: Result) { typ =>
       Ok(Json.toJson(typ))
     }
   }
 
   def procs() = Action {
-    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().map(kv => kv._1.toString -> kv._2)))
   }
   def procForNamespace(namespace: String) = Action {
-    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().filter(_._1._1 == namespace).map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1._1 == namespace).map(kv => kv._1.toString -> kv._2)))
   }
   def procEntry(namespace: String, name: String) = Action {
-    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().filter(_._1 == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1 == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
   }
 
   def arguments() = Action {

@@ -43,7 +43,7 @@ object DbType {
 }
 
 object StoredProcedures {
-  def buildTypes(): Map[OID, DbType] = {
+  def loadTypes(): Map[OID, DbType] = {
     DB.withSession { implicit session =>
 
       // this is a seq of all the fields of complex types
@@ -85,7 +85,7 @@ object StoredProcedures {
     }
   }
 
-  def buildStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
+  def loadStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
     DB.withSession { implicit session =>
 
       // this is a seq of all the fields of complex types
@@ -133,7 +133,7 @@ object StoredProcedures {
 
   def sqlConverter(argType: Long): JsValue => AnyRef = {
     import org.joda.time.format.ISODateTimeFormat.dateTime
-    val types: Map[OID, DbType] = buildTypes()
+    val types: Map[OID, DbType] = loadTypes()
     types.get(argType: OID).map(_.name).map {
       case "int2" => (value: JsValue) => value match {
         case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
