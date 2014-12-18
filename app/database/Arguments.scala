@@ -1,11 +1,11 @@
 package database
 
+import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json.Json
 
-import scala.slick.jdbc.StaticQuery.interpolation
-import scala.slick.jdbc.{GetResult, PositionedResult}
-import play.api.Play.current
+import scala.slick.jdbc.GetResult
+import scala.slick.jdbc.StaticQuery._
 
 object Arguments {
 
@@ -15,10 +15,10 @@ object Arguments {
   object ArgRecord {
     implicit val getResult = GetResult {
       case result =>
-        import result.{nextString, nextInt, nextLong, nextBoolean}
+        import result.{nextBoolean, nextInt, nextLong, nextString}
         ArgRecord(nextString(), nextLong(), nextString(), nextInt(), nextBoolean(), nextString(), nextString(), nextLong())
     }
-    
+
     implicit val format = Json.format[ArgRecord]
   }
 
@@ -29,12 +29,12 @@ object Arguments {
              COALESCE(proargmodes[i], 'i') AS param_mode,
              proargnames[i] AS param_name,
              CASE WHEN proallargtypes IS NULL THEN proargtypes[i-1] ELSE proallargtypes[i] END AS param_type_oid
-     FROM (SELECT generate_subscripts(COALESCE(proallargtypes, proargtypes::oid[]), 1) + CASE WHEN proallargtypes IS NULL THEN 1 ELSE 0 END AS i,
-              nspname, p.oid as prooid,
+     FROM (SELECT generate_subscripts(COALESCE(proallargtypes, proargtypes::OID[]), 1) + CASE WHEN proallargtypes IS NULL THEN 1 ELSE 0 END AS i,
+              nspname, p.oid AS prooid,
               proname,
               proargnames,
               proallargtypes,
-              proargtypes::oid[],
+              proargtypes::OID[],
               proargmodes,
               pronargdefaults
      FROM pg_proc p

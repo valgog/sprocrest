@@ -9,7 +9,7 @@ import play.api.mvc.{Action, Controller, Result}
 
 import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
-import scala.slick.jdbc.{GetResult, PositionedResult}
+import scala.slick.jdbc.GetResult
 import scala.util.{Failure, Success, Try}
 
 case class ProcDesc(argTypes: Array[Long], argNames: Array[String]) {
@@ -36,20 +36,18 @@ object RootController extends Controller {
   def procs() = Action {
     Ok(Json.toJson(StoredProcedures.buildStoredProcedures().map(kv => kv._1.toString -> kv._2)))
   }
+  def procForNamespace(namespace: String) = Action {
+    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().filter(_._1._1 == namespace).map(kv => kv._1.toString -> kv._2)))
+  }
+  def procEntry(namespace: String, name: String) = Action {
+    Ok(Json.toJson(StoredProcedures.buildStoredProcedures().filter(_._1 == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
+  }
 
   def arguments() = Action {
     Ok(Json.toJson(Arguments.loadArgDescriptions()))
   }
 
-  def procEntry(namespace: String, name: String) = Action {
-    Procs.procEntry(s"$namespace/$name").fold(NotFound: Result) { entry =>
-      Ok(Json.toJson(entry))
-    }
-  }
 
-  def procForNamespace(namespace: String) = Action {
-    Ok(Json.toJson(Procs.procsForNamespace(namespace)))
-  }
 
 
   def get() = DBAction { implicit rs =>
@@ -76,10 +74,11 @@ object RootController extends Controller {
 
   def call(namespace: String, name: String) = DBAction(parse.json) { implicit rs =>
     implicit val session = rs.dbSession
-    import scala.slick.jdbc.StaticQuery.interpolation
-    import rs.request
-
     import java.sql
+
+import rs.request
+
+import scala.slick.jdbc.StaticQuery.interpolation
     val query = sql"""
         SELECT proallargtypes, proargnames
          FROM pg_proc JOIN pg_namespace AS ns ON ns.oid = pronamespace
@@ -112,7 +111,7 @@ object RootController extends Controller {
           pathStatement <- managed(session.createStatement())
           pathResult = pathStatement.execute(s"SET search_path to $namespace, PUBLIC")
           statement <- managed(session.prepareStatement(preparedStatement))
-          _ = sqlArgs.zipWithIndex.foreach { case (arg , idx ) => statement.setObject(idx + 1, arg: Object) }
+          _ = sqlArgs.zipWithIndex.foreach { case (arg, idx) => statement.setObject(idx + 1, arg: Object)}
           resultSet <- managed(statement.executeQuery())
         } yield {
           val buffer = new ListBuffer[AnyRef]
@@ -124,7 +123,7 @@ object RootController extends Controller {
 
         operation.map(identity).either match {
           case Right(seq: Seq[_]) => Ok(Json.parse(seq.mkString("[", ",", "]")))
-          case Left(e) => InternalServerError(views.json.error(e.map(_.toString):_*))
+          case Left(e) => InternalServerError(views.json.error(e.map(_.toString): _*))
         }
     }.getOrElse(NotFound)
 
