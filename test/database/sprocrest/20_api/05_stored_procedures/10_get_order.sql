@@ -1,28 +1,49 @@
-CREATE FUNCTION get_orders(customer_number text, ignored int)
+CREATE FUNCTION get_orders(customer_number text, ignored int default 0)
 RETURNS TABLE (orders "order")
 AS $BODY$
-DECLARE
-    known_customer_number CONSTANT text := '00000001';
 BEGIN
-
-    IF customer_number != known_customer_number THEN
-        RETURN;
-    END IF;
-
     RETURN QUERY
-    SELECT known_customer_number,
-           to_char(o_id, 'FM000000000'),
-           ARRAY(select ROW('SKU-' || to_char(i_id, 'FM00000'), 'Article without description' )::order_item
-                   from generate_series(1,5) as i(i_id)
-                )::order_item[],
-           'INITIAL'::order_status,
-           'today'::timestamptz,
-           NULL::timestamptz,
-           NULL::timestamptz
-      FROM generate_series(1,10) AS o(o_id);
+    SELECT o_customer_number,
+           o_order_number,
+           ARRAY( SELECT ROW(oi_sku, oi_description)::order_item
+                    FROM test_data.order_item
+                   WHERE oi_order_id = o_id
+                   ORDER BY oi_id ) as items,
+           o_status,
+           o_created,
+           o_shipped,
+           o_returned
+      FROM test_data."order"
+      JOIN test_data.customer ON c_id = o_customer_id
+     WHERE c_customer_number = customer_number;
 END;
 $BODY$
 LANGUAGE plpgsql
 STABLE
 STRICT;
 
+
+CREATE FUNCTION get_orders(customer_number text, order_numbers text[])
+RETURNS TABLE (orders "order")
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT o_customer_number,
+           o_order_number,
+           ARRAY( SELECT ROW(oi_sku, oi_description)::order_item
+                    FROM test_data.order_item
+                   WHERE oi_order_id = o_id
+                   ORDER BY oi_id ) as items,
+           o_status,
+           o_created,
+           o_shipped,
+           o_returned
+      FROM test_data."order"
+      JOIN test_data.customer ON c_id = o_customer_id
+     WHERE c_customer_number = customer_number
+       AND o_order_number = ANY( order_numbers );
+END;
+$BODY$
+LANGUAGE plpgsql
+STABLE
+STRICT;
