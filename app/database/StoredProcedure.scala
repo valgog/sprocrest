@@ -196,6 +196,8 @@ object StoredProcedures {
   def sqlConverter(argType: Long): JsValue => AnyRef = {
     val types: Map[OID, DbType] = loadTypes()
     val argName = types.get(argType: OID).map(_.name).getOrElse(sys.error(s"Unknown type $argType"))
-    (simpleTypeConverter orElse sys.error(s"No converter found for $argName"))(argName)
+    require(simpleTypeConverter.isDefinedAt(argName))
+    simpleTypeConverter(argName)
+    // (simpleTypeConverter orElse sys.error(s"No converter found for $argName"))(argName)
   }
 }
