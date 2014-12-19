@@ -8,7 +8,7 @@ addons:
 before_script:
     - bash test/bootstrap_database.sh
     - pushd test/database
-    - make test
+    - make test || exit 1
     - popd
 
 # go faster on travis
