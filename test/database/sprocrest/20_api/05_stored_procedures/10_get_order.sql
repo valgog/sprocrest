@@ -3,7 +3,7 @@ RETURNS TABLE (orders "order")
 AS $BODY$
 BEGIN
     RETURN QUERY
-    SELECT o_customer_number,
+    SELECT c_customer_number,
            o_order_number,
            ARRAY( SELECT ROW(oi_sku, oi_description)::order_item
                     FROM test_data.order_item
@@ -28,7 +28,7 @@ RETURNS TABLE (orders "order")
 AS $BODY$
 BEGIN
     RETURN QUERY
-    SELECT o_customer_number,
+    SELECT c_customer_number,
            o_order_number,
            ARRAY( SELECT ROW(oi_sku, oi_description)::order_item
                     FROM test_data.order_item
