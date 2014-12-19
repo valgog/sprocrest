@@ -67,11 +67,6 @@ object RootController extends Controller {
     }
   }
 
-  def serialize() = DBAction { implicit rs =>
-    Ok(PgTypeHelper.toPgString(Array[String]("hello", "world")))
-  }
-
-
   def call(namespace: String, name: String) = DBAction(parse.json) { implicit rs =>
     implicit val session = rs.dbSession
     import java.sql
