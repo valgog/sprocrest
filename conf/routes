@@ -1,4 +1,3 @@
-GET         /                              controllers.RootController.get()
 GET         /procs                         controllers.RootController.procs()
 GET         /procs/:namespace              controllers.RootController.procForNamespace(namespace: String)
 GET         /procs/:namespace/:name        controllers.RootController.procEntry(namespace: String, name: String)

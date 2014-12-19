@@ -2,23 +2,12 @@ package controllers
 
 import database.StoredProcedureTypes.OID
 import database._
-import de.zalando.typemapper.postgres.PgTypeHelper
 import play.api.db.slick.DBAction
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, JsValue, Json}
 import play.api.mvc.{Action, Controller, Result}
 
 import scala.collection.mutable.ListBuffer
 import scala.language.reflectiveCalls
-import scala.slick.jdbc.GetResult
-import scala.util.{Failure, Success, Try}
-
-case class ProcDesc(argTypes: Array[Long], argNames: Array[String]) {
-  def args: Seq[(String, Long)] = argNames.zip(argTypes).init
-}
-
-object ProcDesc {
-  implicit val fmt = Json.format[ProcDesc]
-}
 
 object RootController extends Controller {
 
@@ -36,92 +25,89 @@ object RootController extends Controller {
   def procs() = Action {
     Ok(Json.toJson(StoredProcedures.loadStoredProcedures().map(kv => kv._1.toString -> kv._2)))
   }
+
   def procForNamespace(namespace: String) = Action {
     Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1._1 == namespace).map(kv => kv._1.toString -> kv._2)))
   }
+
   def procEntry(namespace: String, name: String) = Action {
-    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1 == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1 ==(namespace, name)).map(kv => kv._1.toString -> kv._2)))
   }
 
   def arguments() = Action {
     Ok(Json.toJson(Arguments.loadArgDescriptions()))
   }
 
-
-
-
-  def get() = DBAction { implicit rs =>
-    implicit val session = rs.dbSession
-
-    import scala.slick.jdbc.StaticQuery._
-
-
-    Try {
-      sql"SET search_path TO test_api, PUBLIC".as[Boolean].list
-      implicit val getResult = GetResult(_.nextObject())
-      val objects = sql"SELECT to_json((f.*)) FROM get_orders('00000001', 0) AS f".as[Object].list
-      Ok(Json.parse(objects.mkString("[", ",", "]")))
-    } match {
-      case Success(ok) => ok
-      case Failure(e) => InternalServerError(views.json.error(e.toString))
-    }
-  }
-
   def call(namespace: String, name: String) = DBAction(parse.json) { implicit rs =>
     implicit val session = rs.dbSession
-    import java.sql
+    import rs.request
 
-import rs.request
+    request.body match {
+      case obj: JsObject =>
+        implicit val types = StoredProcedures.loadTypes()
+        StoredProcedures.loadStoredProcedures().get((namespace, name)).map { spSeq =>
+          val inArgNames = obj.value.keys.toSet
+          val possibleSps = spSeq.filter { (sp: StoredProcedure) =>
+            // 2 things must be true: every named input argument must exist in the args for this method AND
+            // every function argument not present in the input must support a default value
 
-import scala.slick.jdbc.StaticQuery.interpolation
-    val query = sql"""
-        SELECT proallargtypes, proargnames
-         FROM pg_proc JOIN pg_namespace AS ns ON ns.oid = pronamespace
-        WHERE proname = $name
-          AND ns.nspname = $namespace"""
+            val spArgNames = sp.arguments.map { seq =>
+              seq.map(_.name).toSet
+            }.getOrElse(Set.empty)
 
-    implicit val getter = GetResult { iter =>
-      (iter.nextObject().asInstanceOf[sql.Array], iter.nextObject().asInstanceOf[sql.Array])
-    }
+            val spArgsMustHaveDefault = spArgNames.diff(inArgNames)
 
-    query.as[(sql.Array, sql.Array)].list.headOption.map {
-      case (longs, strings) =>
-        val args = ProcDesc(
-          longs.getArray.asInstanceOf[Array[java.lang.Long]].map(_.longValue),
-          strings.getArray.asInstanceOf[Array[String]]
-        ).args
+            val spArgsMissingWithDefaults = sp.arguments.map { arguments =>
+              (for (argument <- arguments if spArgsMustHaveDefault(argument.name) && !argument.hasDefault) yield argument.name).toSet
+            }.getOrElse(Set.empty)
 
-        val sqlArgs: Seq[AnyRef] = args.map {
-          case (argName, argType: Long) =>
-            StoredProcedures.sqlConverter(argType)((request.body \\ argName).head)
-        }
-        val preparedStatement =
-          s"""
-             |SELECT to_json((f.*))
-             |  FROM $name(${(1 to sqlArgs.size).map(_ => "?").mkString(",")})
-             |    AS f
-            """.stripMargin
-        import resource._
-        val operation = for {
-          pathStatement <- managed(session.createStatement())
-          pathResult = pathStatement.execute(s"SET search_path to $namespace, PUBLIC")
-          statement <- managed(session.prepareStatement(preparedStatement))
-          _ = sqlArgs.zipWithIndex.foreach { case (arg, idx) => statement.setObject(idx + 1, arg: Object)}
-          resultSet <- managed(statement.executeQuery())
-        } yield {
-          val buffer = new ListBuffer[AnyRef]
-          while (resultSet.next()) {
-            buffer += resultSet.getObject(1)
+            spArgNames.intersect(inArgNames) == inArgNames && spArgsMissingWithDefaults.isEmpty
           }
-          buffer.toSeq
-        }
+          if (possibleSps.isEmpty) BadRequest(views.json.error(s"Could not find a sproc for ${request.body}"))
+          else if (possibleSps.size > 1) BadRequest(views.json.error(s"Found multiple possible sprocs: $possibleSps"))
+          else {
+            val storedProcedure: StoredProcedure = possibleSps.head
+            val spArgs: Seq[Argument] = storedProcedure.arguments.get
+            val inArgs: collection.Map[String, JsValue] = obj.value
+            val sqlArgs = spArgs.collect {
+              case spArg if inArgs.contains(spArg.name) =>
+                val converter = StoredProcedures.sqlConverter(spArg.typeOid)
+                converter(inArgs(spArg.name))
+            }
 
-        operation.map(identity).either match {
-          case Right(seq: Seq[_]) => Ok(Json.parse(seq.mkString("[", ",", "]")))
-          case Left(e) => InternalServerError(views.json.error(e.map(_.toString): _*))
-        }
-    }.getOrElse(NotFound)
+            val preparedStatement = s"""
+                         |SELECT to_json((f.*))
+                         |  FROM $name(${(1 to sqlArgs.size).map(_ => "?").mkString(",")})
+                         |    AS f
+                        """.stripMargin
 
+            import resource._
+
+            val query = for {
+              searchPathStatement <- managed(session.createStatement())
+              _ = searchPathStatement.execute(s"set search_path to $namespace, PUBLIC")
+              statement <- managed(session.prepareStatement(preparedStatement))
+              _ = sqlArgs.zipWithIndex.foreach { case (arg, idx) => statement.setObject(idx + 1, arg: Object)}
+              resultSet <- managed(statement.executeQuery())
+            } yield {
+              val buffer = new ListBuffer[String]
+              while (resultSet.next()) {
+                buffer += resultSet.getObject(1).toString
+              }
+              buffer.toSeq
+            }
+
+            query.map(identity).either match {
+              case Right(seq: Seq[_]) => Ok(Json.parse(seq.mkString("[", ",", "]")))
+              case Left(e) =>
+                e.foreach(_.printStackTrace)
+                InternalServerError(views.json.error(e.map(_.toString): _*))
+            }
+          }
+        }.getOrElse(NotFound)
+      case other => BadRequest(views.json.error(s"Expected a json object, found: $other"))
+
+    }
   }
 
 }

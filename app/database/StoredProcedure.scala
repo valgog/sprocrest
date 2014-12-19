@@ -2,10 +2,11 @@ package database
 
 import java.sql.Timestamp
 
+import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Play.current
 import play.api.db.slick.DB
-import play.api.libs.json.{JsNumber, JsString, JsValue, Json}
+import play.api.libs.json._
 
 import scala.slick.jdbc.StaticQuery._
 
@@ -151,54 +152,65 @@ object StoredProcedures {
     }
   }
 
-  val simpleTypeConverter: PartialFunction[String, JsValue => AnyRef] = {
-    case "int2" => {
+  val simpleTypeConverter: PartialFunction[DbType, JsValue => AnyRef] = {
+    case DbType("pg_catalog", "int2", _, _, _, _, _)  => {
       case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct an int2 from $other")
     }
-    case "int4" => {
+    case DbType("pg_catalog", "int4", _, _, _, _, _) => {
       case number: JsNumber => number.value.toInt.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct an int4 from $other")
     }
-    case "oid" | "int8" => {
+    case DbType("pg_catalog", "oid", _, _, _, _, _) | DbType("pg_catalog", "int8", _, _, _, _, _) => {
       case number: JsNumber => number.value.toLong.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct an int8 from $other")
     }
-    case "numeric" | "decimal" => (value: JsValue) => value match {
+    case DbType("pg_catalog", "numeric", _, _, _, _, _) => (value: JsValue) => value match {
       case number: JsNumber => number.value
       case other => sys.error(s"Cannot construct an double from $other")
     }
-    case "float4" => {
+    case DbType("pg_catalog", "float4", _, _, _, _, _) => {
       case number: JsNumber => number.value.toFloat.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct a float from $other")
     }
-    case "float8" | "money" => {
+    case DbType("pg_catalog", "float8", _, _, _, _, _) | DbType("pg_catalog", "money", _, _, _, _, _)  => {
       case number: JsNumber => number.value.toDouble.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct a double from $other")
     }
-    case "bpchar" => {
+    case DbType("pg_catalog", "bpchar", _, _, _, _, _) => {
       case number: JsNumber => number.value.toChar.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct a char from $other")
     }
-    case "varchar" | "text" | "name" => {
+    case DbType("pg_catalog", "varchar", _, _, _, _, _) | DbType("pg_catalog", "text", _, _, _, _, _) | DbType("pg_catalog", "name", _, _, _, _, _) => {
       case number: JsString => number.value
       case other => sys.error(s"Cannot construct a string from $other")
     }
-    case "time" | "timetz" => {
+    case DbType("pg_catalog", "time", _, _, _, _, _) | DbType("pg_catalog", "timetz", _, _, _, _, _) => {
       case number: JsString => new java.sql.Date(dateTime.parseDateTime(number.value).toDate.getTime)
       case other => sys.error(s"Cannot construct a string from $other")
     }
-    case "timestamp" | "timestamptz" => {
+    case DbType("pg_catalog", "timestamp", _, _, _, _, _) | DbType("pg_catalog", "timestamptz", _, _, _, _, _) => {
       case number: JsString => new Timestamp(dateTime.parseDateTime(number.value).toDate.getTime)
       case other => sys.error(s"Cannot construct a string from $other")
     }
   }
 
-  def sqlConverter(argType: Long): JsValue => AnyRef = {
-    val types: Map[OID, DbType] = loadTypes()
-    val argName = types.get(argType: OID).map(_.name).getOrElse(sys.error(s"Unknown type $argType"))
-    require(simpleTypeConverter.isDefinedAt(argName))
-    simpleTypeConverter(argName)
-    // (simpleTypeConverter orElse sys.error(s"No converter found for $argName"))(argName)
+  def sqlConverter(argType: DbType)(implicit table: OID => DbType): JsValue => AnyRef = {
+
+    if ( simpleTypeConverter.isDefinedAt(argType)) {
+      simpleTypeConverter(argType)
+    } else if (argType.containedType.isDefined) {
+      val containedType = table(argType.containedType.get)
+
+      {
+        case array: JsArray =>
+          val converted: Seq[AnyRef] = array.value.map(simpleTypeConverter(containedType))
+          import scala.collection.JavaConverters._
+          PgArray.ARRAY(converted.asJava)
+        case other => sys.error(s"Don't know how to convert $argType container of $containedType")
+      }
+    } else {
+      sys.error(s"We don't handle complex types yet: $argType")
+    }
   }
 }
