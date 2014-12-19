@@ -23,11 +23,12 @@ class StoredProcedureTest extends Specification {
       StoredProcedures.simpleTypeConverter("name")(JsString("zalando")) must_== "zalando"
 
       val timestamp = "2014-12-19T09:51:55.000Z"
+      import java.sql
       val now = ISODateTimeFormat.dateTime.parseDateTime(timestamp).toDate
-      StoredProcedures.simpleTypeConverter("time")(JsString(timestamp)) must_== new java.sql.Date(now.getTime)
-      StoredProcedures.simpleTypeConverter("timetz")(JsString(timestamp)) must_== new java.sql.Date(now.getTime)
-      StoredProcedures.simpleTypeConverter("timestamp")(JsString(timestamp)) must_== new java.sql.Timestamp(now.getTime)
-      StoredProcedures.simpleTypeConverter("timestamptz")(JsString(timestamp)) must_== new java.sql.Timestamp(now.getTime)
+      StoredProcedures.simpleTypeConverter("time")(JsString(timestamp)) must_== new sql.Date(now.getTime)
+      StoredProcedures.simpleTypeConverter("timetz")(JsString(timestamp)) must_== new sql.Date(now.getTime)
+      StoredProcedures.simpleTypeConverter("timestamp")(JsString(timestamp)) must_== new sql.Timestamp(now.getTime)
+      StoredProcedures.simpleTypeConverter("timestamptz")(JsString(timestamp)) must_== new sql.Timestamp(now.getTime)
     }
   }
 }
