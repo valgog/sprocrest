@@ -111,7 +111,7 @@ object StoredProcedures {
         val rows =
           sql"""SELECT prooid,
                        row_number() OVER w AS position,
-                       row_number() OVER w > count(1) OVER w - pronargdefaults AS has_default,
+                       row_number() OVER w > count(1) OVER c - pronargdefaults AS has_default,
                        COALESCE(proargmodes[i], 'i') AS param_mode,
                        proargnames[i] AS param_name,
                        CASE WHEN proallargtypes IS NULL THEN proargtypes[i-1] ELSE proallargtypes[i] END AS param_type_oid
@@ -127,7 +127,8 @@ object StoredProcedures {
                            AND NOT proiswindow
                        ) a
                  WHERE proargmodes IS NULL OR proargmodes[i] NOT IN('o', 't')
-                WINDOW w AS (PARTITION BY prooid ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq
+                WINDOW c AS (PARTITION BY prooid),
+                       w AS (c ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq
 
         rows.groupBy(_._1).mapValues {
           _.sortBy(_._2).map {
