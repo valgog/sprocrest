@@ -7,6 +7,9 @@ addons:
     postgresql: "9.3"
 before_script:
     - bash test/bootstrap_database.sh
+    - pushd test/database
+    - make test
+    - popd
 
 # go faster on travis
 sudo: false
