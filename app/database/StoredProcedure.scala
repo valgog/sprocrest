@@ -3,7 +3,7 @@ package database
 import java.sql.Timestamp
 import java.util.concurrent.atomic.AtomicReference
 
-import akka.actor.{Props, Actor, ActorLogging}
+import akka.actor.{Actor, ActorLogging, Props}
 import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Play.current
@@ -14,7 +14,7 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.forkjoin.ForkJoinPool
 import scala.concurrent.{ExecutionContext, Future}
 import scala.slick.jdbc.StaticQuery._
-import scala.util.{Try, Failure, Success}
+import scala.util.{Failure, Random, Success}
 
 object StoredProcedureTypes {
   type OID = Long
@@ -112,59 +112,39 @@ object Loaders {
 
 }
 
-class TypesLoader extends Actor with ActorLogging {
+class BlockingPeriodicTask(name: String, f: () => Unit) extends Actor with ActorLogging {
 
   import database.Loaders._
 
   override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
-    log.error(s"Restarting TypesLoader: $reason $message")
+    log.error(s"Restarting $name: $reason $message")
   }
 
   override def receive: Receive = {
     case ReloadAll =>
       implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
-      log.debug("Reloading types")
+      log.debug(s"Reloading $name")
       val future = Future {
-        StoredProcedures.types.set(StoredProcedures.loadTypes())
-        log.debug("Reloaded types")
+        f
+        log.debug(s"Reloaded $name")
       }
       future.onComplete {
         case Failure(x) => throw x
         case Success(_) => ()
       }
   }
+
 }
 
-class StoredProcedureLoader extends Actor with ActorLogging {
-
-  import database.Loaders._
-
-  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
-    log.error(s"Restarting TypesLoader: $reason $message")
-  }
-
-  override def receive: Receive = {
-    case ReloadAll =>
-      implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
-      val future = Future {
-        StoredProcedures.storedProcedures.set(StoredProcedures.loadStoredProcedures())
-        log.debug("Reloaded sprocs")
-      }
-      future.onComplete {
-        case Failure(x) => throw x
-        case Success(_) => ()
-      }
-  }
-}
-
-class LoadingCoordinator extends Actor with ActorLogging {
+class PeriodicTaskSupervisor extends Actor with ActorLogging {
 
   override def receive: Receive = {
     case p: Props =>
+      import scala.concurrent.ExecutionContext.Implicits.global
       import scala.concurrent.duration._
-      import scala.concurrent.ExecutionContext.Implicits.global   // todo maybe not the right one
+      // todo maybe not the right one
       val child = context.actorOf(p)
-      context.system.scheduler.schedule(0.seconds, 5.seconds) {
+      context.system.scheduler.schedule(Random.nextInt(5).seconds, 5.seconds) {
         child ! Loaders.ReloadAll
       }
   }
@@ -174,9 +154,11 @@ object StoredProcedures {
 
   def start(): Unit = {
     import play.api.libs.concurrent.Akka.system
-    val coordinator = system.actorOf(Props[LoadingCoordinator], name = "LoadingCoordinator")
-    coordinator ! Props[TypesLoader]
-    coordinator ! Props[StoredProcedureLoader]
+    val coordinator = system.actorOf(Props[PeriodicTaskSupervisor], name = "LoadingCoordinator")
+    coordinator ! Props(classOf[BlockingPeriodicTask], "TypesLoader",
+      () => StoredProcedures.types.set(StoredProcedures.loadTypes()))
+    coordinator ! Props(classOf[BlockingPeriodicTask], "SprocLoader",
+      () => StoredProcedures.storedProcedures.set(StoredProcedures.loadStoredProcedures()))
   }
 
   val types = new AtomicReference[Map[OID, DbType]](loadTypes())
@@ -240,7 +222,6 @@ object StoredProcedures {
       }
     }
   }
-
 
   def loadStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
     DB.withSession { implicit session =>
