@@ -3,8 +3,8 @@
 readonly owner="sprocrest"
 readonly databases="sprocrest sproctest1 sproctest2"
 
-readonly testdir="$( dirname $0 )"
-cd "${testdir}"
+readonly bindir="$( dirname $0 )"
+cd "${bindir}/../sql"
 
 function create_role() {
     local role=$1
@@ -12,7 +12,7 @@ function create_role() {
 }
 
 function get_sources() {
-    find database -type f -name '*.sql' | sort | xargs cat
+    find . -type f -name '*.sql' | sort | xargs cat
 }
 
 function bootstrap_database() {
