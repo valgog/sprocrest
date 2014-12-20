@@ -15,3 +15,10 @@ script: sbt coverage test
 
 # go faster on travis
 sudo: false
+
+notifications:
+    email:
+        - eric.bowman@zalando.de
+        - valentine.gogichashvili@zalando.de
+        - alexander.kukushkin@zalando.de
+
