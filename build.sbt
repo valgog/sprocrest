@@ -9,6 +9,7 @@ resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/mo
 
 libraryDependencies ++= Seq(
   jdbc,
+  "com.typesafe.akka" %% "akka-actor" % "2.3.8",
   "com.jsuereth" % "scala-arm_2.11" % "1.4",
   "de.zalando" % "zalando-sprocwrapper" % "1.0.6" excludeAll(
     ExclusionRule(organization = "org.springframework"),

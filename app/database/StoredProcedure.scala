@@ -1,14 +1,20 @@
 package database
 
 import java.sql.Timestamp
+import java.util.concurrent.atomic.AtomicReference
 
+import akka.actor.{Props, Actor, ActorLogging}
 import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json._
 
+import scala.collection.mutable.ListBuffer
+import scala.concurrent.forkjoin.ForkJoinPool
+import scala.concurrent.{ExecutionContext, Future}
 import scala.slick.jdbc.StaticQuery._
+import scala.util.{Try, Failure, Success}
 
 object StoredProcedureTypes {
   type OID = Long
@@ -30,7 +36,63 @@ object Attribute {
   implicit val format = Json.format[Attribute]
 }
 
-case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Option[Seq[Argument]])
+case class MultipleException(exceptions: Seq[Throwable]) extends Exception {
+  override def toString = exceptions.map(_.toString).mkString("[", ",", "]")
+}
+
+case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Option[Seq[Argument]]) {
+  def matches(argNames: Set[String]): Boolean = {
+    // set of the stored procedure argument names
+    val spArgNames = arguments.map { seq =>
+      seq.map(_.name).toSet
+    }.getOrElse(Set.empty)
+
+    // set of sp arguments that must have a default value for this call to succeed
+    val spArgsMustHaveDefault = spArgNames.diff(argNames)
+
+    // the set of sp args that don't have a default value, that are not present in the incoming args
+    val spArgsMissingWithDefaults = arguments.map { arguments =>
+      (for (argument <- arguments if spArgsMustHaveDefault(argument.name) && !argument.hasDefault) yield argument.name).toSet
+    }.getOrElse(Set.empty)
+
+    // for us to process this request, all the incoming arguments must be present in the sp arguments,
+    // and there can't be any missing arguments that don't have a default value in the sproc
+    spArgNames.intersect(argNames) == argNames && spArgsMissingWithDefaults.isEmpty
+  }
+
+  def execute(sqlArgs: Seq[AnyRef]): Iterable[String] = {
+    DB.withSession { implicit session =>
+      // somewhat hand-crafted sproc call, that returns json we stream directly back to the caller
+      val preparedStatement = s"""
+                         |SELECT to_json((f.*))
+                         |  FROM $name(${(1 to sqlArgs.size).map(_ => "?").mkString(",")})
+                         |    AS f
+                        """.stripMargin
+
+      import resource._
+
+      val query = for {
+        searchPathStatement <- managed(session.createStatement())
+        _ = searchPathStatement.execute(s"set search_path to $namespace, PUBLIC")
+        statement <- managed(session.prepareStatement(preparedStatement))
+        _ = sqlArgs.zipWithIndex.foreach { case (arg, idx) => statement.setObject(idx + 1, arg: Object)}
+        resultSet <- managed(statement.executeQuery())
+      } yield {
+        // todo is there a nicer way to do this with slick?
+        val buffer = new ListBuffer[String]
+        while (resultSet.next()) {
+          buffer += resultSet.getObject(1).toString
+        }
+        buffer.toSeq
+      }
+
+      query.map(identity).either match {
+        case Left(throwables) => throw MultipleException(throwables)
+        case Right(rows) => rows
+      }
+    }
+  }
+}
 
 object StoredProcedure {
   implicit val format = Json.format[StoredProcedure]
@@ -44,7 +106,82 @@ object DbType {
   implicit val format = Json.format[DbType]
 }
 
+object Loaders {
+
+  object ReloadAll
+
+}
+
+class TypesLoader extends Actor with ActorLogging {
+
+  import database.Loaders._
+
+  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
+    log.error(s"Restarting TypesLoader: $reason $message")
+  }
+
+  override def receive: Receive = {
+    case ReloadAll =>
+      implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
+      log.debug("Reloading types")
+      val future = Future {
+        StoredProcedures.types.set(StoredProcedures.loadTypes())
+        log.debug("Reloaded types")
+      }
+      future.onComplete {
+        case Failure(x) => throw x
+        case Success(_) => ()
+      }
+  }
+}
+
+class StoredProcedureLoader extends Actor with ActorLogging {
+
+  import database.Loaders._
+
+  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
+    log.error(s"Restarting TypesLoader: $reason $message")
+  }
+
+  override def receive: Receive = {
+    case ReloadAll =>
+      implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
+      val future = Future {
+        StoredProcedures.storedProcedures.set(StoredProcedures.loadStoredProcedures())
+        log.debug("Reloaded sprocs")
+      }
+      future.onComplete {
+        case Failure(x) => throw x
+        case Success(_) => ()
+      }
+  }
+}
+
+class LoadingCoordinator extends Actor with ActorLogging {
+
+  override def receive: Receive = {
+    case p: Props =>
+      import scala.concurrent.duration._
+      import scala.concurrent.ExecutionContext.Implicits.global   // todo maybe not the right one
+      val child = context.actorOf(p)
+      context.system.scheduler.schedule(0.seconds, 5.seconds) {
+        child ! Loaders.ReloadAll
+      }
+  }
+}
+
 object StoredProcedures {
+
+  def start(): Unit = {
+    import play.api.libs.concurrent.Akka.system
+    val coordinator = system.actorOf(Props[LoadingCoordinator], name = "LoadingCoordinator")
+    coordinator ! Props[TypesLoader]
+    coordinator ! Props[StoredProcedureLoader]
+  }
+
+  val types = new AtomicReference[Map[OID, DbType]](loadTypes())
+  val storedProcedures = new AtomicReference[Map[(Namespace, Name), Seq[StoredProcedure]]](loadStoredProcedures())
+
   def loadTypes(): Map[OID, DbType] = {
     DB.withSession { implicit session =>
 
@@ -104,6 +241,7 @@ object StoredProcedures {
     }
   }
 
+
   def loadStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
     DB.withSession { implicit session =>
 
@@ -153,7 +291,7 @@ object StoredProcedures {
   }
 
   val simpleTypeConverter: PartialFunction[DbType, JsValue => AnyRef] = {
-    case DbType("pg_catalog", "int2", _, _, _, _, _)  => {
+    case DbType("pg_catalog", "int2", _, _, _, _, _) => {
       case number: JsNumber => number.value.toShort.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct an int2 from $other")
     }
@@ -173,7 +311,7 @@ object StoredProcedures {
       case number: JsNumber => number.value.toFloat.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct a float from $other")
     }
-    case DbType("pg_catalog", "float8", _, _, _, _, _) | DbType("pg_catalog", "money", _, _, _, _, _)  => {
+    case DbType("pg_catalog", "float8", _, _, _, _, _) | DbType("pg_catalog", "money", _, _, _, _, _) => {
       case number: JsNumber => number.value.toDouble.asInstanceOf[AnyRef]
       case other => sys.error(s"Cannot construct a double from $other")
     }
@@ -197,7 +335,7 @@ object StoredProcedures {
 
   def sqlConverter(argType: DbType)(implicit table: OID => DbType): JsValue => AnyRef = {
 
-    if ( simpleTypeConverter.isDefinedAt(argType)) {
+    if (simpleTypeConverter.isDefinedAt(argType)) {
       simpleTypeConverter(argType)
     } else if (argType.containedType.isDefined) {
       val containedType = table(argType.containedType.get)
