@@ -35,16 +35,20 @@ Developing
 
 You might need to create a postgres database to get the application tests to run:
 
-```bash
-    bash test/bootstrap_database.sh
-```
+    bash bin/bootstrap_database.bash
+
+You can drop the database and re-run the bootstrap after:
+
+    bash bin/drop_databases.bash
 
 Then to run the application:
 
-```bash
     sbt run
-```
 
 This will start the application on port 9000.
 
-It doesn't do anything yet.
+You might also like to leave it in a compile/run loop if you are developing.
+From the shell run `$ sbt`, then within the sbt shell:
+
+	> ~run
+
