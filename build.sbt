@@ -3,7 +3,7 @@ name := "sprocrest"
 scalaVersion := "2.11.4"
 scalacOptions ++= Seq("-feature", "-deprecation")
 
-parallelExecution in Test := true
+//parallelExecution in Test := true
 
 resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/modules/releases/"))(Resolver.ivyStylePatterns)
 
