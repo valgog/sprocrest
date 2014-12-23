@@ -33,28 +33,25 @@ object RootController extends Controller {
     Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1 ==(namespace, name)).map(kv => kv._1.toString -> kv._2)))
   }
 
-  def arguments() = Action {
-    Ok(Json.toJson(Arguments.loadArgDescriptions()))
-  }
-
   def call(namespace: String, name: String) = Action(parse.json) { implicit request: Request[JsValue] =>
 
     request.body match {
       case obj: JsObject =>
-
         implicit val types = StoredProcedures.loadTypes()
         val sprocs = StoredProcedures.storedProcedures.get.get((namespace, name))
         val possibleSps: Seq[StoredProcedure] = sprocs.map {
             // what stored procedures can process the given incoming argument names?
-            _.filter(_.matches(obj.value.keys.toSet))
+            _.filter { (sproc: StoredProcedure) =>
+              sproc.matches(obj.value.keys.toSet)
+            }
         }.getOrElse(Seq.empty)
 
         possibleSps.toList match {
           case Nil =>
-            if (sprocs.isEmpty) NotFound(views.json.error(s"Could not find a sproc for ${request.body}"))
+            if (sprocs.isEmpty) NotFound(views.json.error(s"Could not find a sproc $namespace.$name(...) for ${request.body}"))
             else BadRequest(s"sproc $namespace/$name exists, but could not match arguments; see /procs/$namespace/$name")
           case storedProcedure :: Nil =>
-            val spArgs: Seq[Argument] = storedProcedure.arguments.get
+            val spArgs: Seq[Argument] = storedProcedure.arguments.getOrElse(Seq.empty)
             val inArgs: Map[String, JsValue] = obj.value.toMap
 
             {

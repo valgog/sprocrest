@@ -47,6 +47,8 @@ case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments
       seq.map(_.name).toSet
     }.getOrElse(Set.empty)
 
+    println(s"stored procedure argument names are $spArgNames")
+
     // set of sp arguments that must have a default value for this call to succeed
     val spArgsMustHaveDefault = spArgNames.diff(argNames)
 
@@ -57,7 +59,8 @@ case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments
 
     // for us to process this request, all the incoming arguments must be present in the sp arguments,
     // and there can't be any missing arguments that don't have a default value in the sproc
-    spArgNames.intersect(argNames) == argNames && spArgsMissingWithDefaults.isEmpty
+    ( spArgNames.isEmpty && argNames.isEmpty ) ||
+      ( spArgNames.intersect(argNames) == argNames && spArgsMissingWithDefaults.isEmpty )
   }
 
   def execute(sqlArgs: Seq[AnyRef]): Iterable[String] = {
@@ -74,7 +77,7 @@ case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments
       val query = for {
         searchPathStatement <- managed(session.createStatement())
         _ = searchPathStatement.execute(s"set search_path to $namespace, PUBLIC")
-        statement <- managed(session.prepareStatement(preparedStatement))
+        statement <-  managed(session.prepareStatement(preparedStatement))
         _ = sqlArgs.zipWithIndex.foreach { case (arg, idx) => statement.setObject(idx + 1, arg: Object)}
         resultSet <- managed(statement.executeQuery())
       } yield {

@@ -4,5 +4,4 @@ GET         /procs/:namespace/:name        controllers.RootController.procEntry(
 GET         /types                         controllers.RootController.types()
 GET         /types/:id                     controllers.RootController.typeOf(id: Long)
 POST        /call/:namespace/:name         controllers.RootController.call(namespace: String, name: String)
-GET         /arguments                     controllers.RootController.arguments()
 

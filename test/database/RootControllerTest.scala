@@ -1,7 +1,7 @@
 package database
 
 import org.specs2.mutable._
-import play.api.libs.json.{JsArray, JsString, JsObject, Json}
+import play.api.libs.json._
 import play.api.test.Helpers._
 import play.api.test.{FakeRequest, WithApplication}
 
@@ -66,6 +66,20 @@ class RootControllerTest extends Specification {
       }
     }
 
+    "make an call correctly with no arguments" in new WithApplication {
+      val res = route(FakeRequest(POST, "/call/test_api/get_customer_count").withJsonBody {
+        Json.parse("{}")
+      }).get
+
+      status(res) must_== 200
+      contentAsJson(res) match {
+        case array: JsArray =>
+          array.value.size must_== 1
+          array.value.head must_== JsNumber(9) // TODO: fix this
+        case other => sys.error(s"Unexpected result type: $other")
+      }
+    }
+
     "find some expected types" in new WithApplication {
       val res = route(FakeRequest(GET, "/types")).get
       status(res) must_== 200
@@ -104,26 +118,6 @@ class RootControllerTest extends Specification {
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       ((json \ "(test_api,get_orders)").asInstanceOf[JsArray](0) \ "name").asInstanceOf[JsString].value must_== "get_orders"
-    }
-
-    "find an argument in the test_api namespace" in new WithApplication {
-      val res = route(FakeRequest(GET, "/arguments")).get
-      status(res) must_== 200
-      val json = contentAsJson(res).asInstanceOf[JsArray]
-      json.value.exists {
-        case jsObject: JsObject => (jsObject \ "namespace").asInstanceOf[JsString].value == "test_api"
-        case _ => false
-      }
-    }
-
-    "return arguments with known values" in new WithApplication {
-      val res = route(FakeRequest(GET, "/arguments")).get
-      status(res) must_== 200
-      val json = contentAsJson(res).asInstanceOf[JsArray]
-      json.value.exists {
-        case jsObject: JsObject => (jsObject \ "namespace").asInstanceOf[JsString].value == "test_api"
-        case _ => false
-      }
     }
 
     "return a 404 when calling non-existing sproc" in new WithApplication {
