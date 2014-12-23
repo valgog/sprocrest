@@ -5,7 +5,16 @@ scalacOptions ++= Seq("-feature", "-deprecation")
 
 //parallelExecution in Test := true
 
-resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/modules/releases/"))(Resolver.ivyStylePatterns)
+
+resolvers ++= Seq(
+  Resolver.mavenLocal,
+  Resolver.sbtPluginRepo("snapshots"),
+  Resolver.sonatypeRepo("snapshots"),
+  Resolver.typesafeRepo("snapshots"),
+  Resolver.typesafeRepo("releases"),
+  Resolver.typesafeIvyRepo("releases"),
+  Resolver.url("Edulify Repository", url("http://edulify.github.io/modules/releases/"))(Resolver.ivyStylePatterns)
+)
 
 libraryDependencies ++= Seq(
   jdbc,
