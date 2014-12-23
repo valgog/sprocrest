@@ -3,11 +3,12 @@ package database
 import org.joda.time.format.ISODateTimeFormat
 import org.specs2.mutable._
 import play.api.libs.json.{JsString, JsNumber}
+import play.api.test.WithApplication
 
 class StoredProcedureTest extends Specification {
 
   "The stored procedures code" should {
-    "convert simple types from json to sql-friendly types" in {
+    "convert simple types from json to sql-friendly types" in new WithApplication {
       def dbType(name: String) = DbType("pg_catalog", name, 0, None, None, "", None)
       StoredProcedures.simpleTypeConverter(dbType("int2"))(JsNumber(10)) must_== "10".toShort
       StoredProcedures.simpleTypeConverter(dbType("int4"))(JsNumber(10)) must_== "10".toInt
