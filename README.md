@@ -25,6 +25,7 @@ Roadmap
 -------
 
 The following features are on the roadmap for now:
+
 * detect and expose all stored procedures as RESTful API calls,
 * perform automatic mapping of the database types to and from PostgreSQL stored procedures,
 * make it possible to do parallel or sequential access to the database shards (set of databases),
@@ -37,9 +38,8 @@ You might need to create a postgres database to get the application tests to run
 
     bash bin/bootstrap_database.bash
 
-You can drop the database and re-run the bootstrap after:
-
-    bash bin/drop_databases.bash
+> :warning: This script will destroy any database or role, created by the user in the local cluster previously.
+> Do no use on any database, that is used for anything else then testing this project code.
 
 Then to run the application:
 
@@ -52,3 +52,23 @@ From the shell run `$ sbt`, then within the sbt shell:
 
 	> ~run
 
+
+TODO
+----
+What things are still to be done:
+
+- [x] load metadata from database catalog
+  - [x] load type information
+  - [x] load stored procedure signatures
+  - [x] periodic reloading of metadata
+- [ ] call stored procedures
+  - [x] return simple and complex types
+  - [x] support parameter overloading
+  - [x] map and pass simple types
+  - [ ] map and pass complex types
+- [ ] support more then one database (especially database shards)
+- [ ] merge results from several database shards
+- [ ] support stored procedure annotations
+  - [ ] sharding strategies
+  - [ ] sharded result merging
+  - [ ] 2PC
