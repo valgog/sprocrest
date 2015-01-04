@@ -1,7 +1,7 @@
 #!/bin/bash
 
 readonly owner="sprocrest"
-readonly databases="sprocrest sproctest1 sproctest2"
+readonly databases="sprocrest sprocrests1 sprocrests2"
 
 readonly bindir="$( dirname $0 )"
 cd "${bindir}/../sql"
@@ -29,12 +29,12 @@ function get_sources() {
 
 function bootstrap_database() {
     local db=$1
-    cat << EOF
+    cat << --SQL--
 RESET role;
 CREATE DATABASE ${db} owner ${owner};
 \connect ${db}
 SET role TO ${owner};
-EOF
+--SQL--
     get_sources
 }
 

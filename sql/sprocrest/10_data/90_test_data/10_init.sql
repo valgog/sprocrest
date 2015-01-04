@@ -1,13 +1,18 @@
+SET search_path TO test_data;
+
 -- populate customer table
+
 INSERT INTO test_data.customer (c_customer_number, c_first_name, c_last_name, c_email)
 SELECT customer_number,
        first_name,
        last_name,
        format('%s.%s@example.org', lower(first_name), lower(last_name)) as email
-  FROM (SELECT to_char(c.i, 'FM00000') as customer_number,
+  FROM (SELECT get_shard_id() || to_char(c.i, 'FM00000') as customer_number,
                ('{Florence,Helen,Forton,Martha,Jenatt,Adam,Bryan,Den,Hector,Walter}'::text[])[c.i] as first_name,
                ('{Bourn,Buck,Cay,Cramer,Toller,Wales,Wall,Watson,Yong,Wild}'::text[])[c.i] as last_name
-          FROM generate_series(1, 9) as c(i) ) AS x;
+          FROM generate_series(case get_shard_id() when '' then 1  when '1' then 1 when '2' then 6 end,
+                               case get_shard_id() when '' then 10 when '1' then 5 when '2' then 10 end) as c(i)
+       ) AS x;
 
 -- populate order table
 INSERT INTO test_data."order" (o_customer_id, o_order_number)

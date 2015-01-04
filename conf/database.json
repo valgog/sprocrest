@@ -1,0 +1,21 @@
+[
+  {
+    "environment": "test",
+    "name": "sprocrests",
+    "role": "master",
+    "shards": {
+      "sprocrests1": "localhost/test_sprocrests1_db",
+      "sprocrests2": "localhost/test_sprocrests2_db"
+    },
+    "type": "database"
+  },
+  {
+    "environment": "test",
+    "name": "sprocrest",
+    "role": "master",
+    "shards": {
+      "sprocrest": "localhost/test_sprocrest_db"
+    },
+    "type": "database"
+  }
+]

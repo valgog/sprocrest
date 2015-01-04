@@ -8,7 +8,7 @@ import play.api.test.{FakeRequest, WithApplication}
 class RootControllerTest extends Specification {
   "RootController" should {
     "make an arbitrary call correctly" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |{
@@ -28,7 +28,7 @@ class RootControllerTest extends Specification {
     }
 
     "make an arbitrary call correctly with an array" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |{
@@ -48,7 +48,7 @@ class RootControllerTest extends Specification {
     }
 
     "make an call correctly with default argument" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |{
@@ -67,7 +67,7 @@ class RootControllerTest extends Specification {
     }
 
     "make an call correctly with no arguments" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_customer_count").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_customer_count").withJsonBody {
         Json.parse("{}")
       }).get
 
@@ -75,53 +75,60 @@ class RootControllerTest extends Specification {
       contentAsJson(res) match {
         case array: JsArray =>
           array.value.size must_== 1
-          array.value.head must_== JsNumber(9) // TODO: fix this
+          array.value.head must_== JsNumber(10) // TODO: fix this
         case other => sys.error(s"Unexpected result type: $other")
       }
     }
 
+    "find all configured databases" in new WithApplication {
+      val res = route(FakeRequest(GET, "/databases")).get
+      status(res) must_== 200
+      val json = contentAsJson(res).asInstanceOf[JsArray]
+      json.value.size must_== 3
+    }
+
     "find some expected types" in new WithApplication {
-      val res = route(FakeRequest(GET, "/types")).get
+      val res = route(FakeRequest(GET, "/types/sprocrest")).get
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       (json \ "16" \ "name").asInstanceOf[JsString].value must_== "bool"
     }
 
     "find a type by its id" in new WithApplication {
-      val res = route(FakeRequest(GET, "/types/16")).get
+      val res = route(FakeRequest(GET, "/types/sprocrest/16")).get
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       (json \ "name").asInstanceOf[JsString].value must_== "bool"
     }
 
     "behave as expected looking for non-existing types" in new WithApplication {
-      val res = route(FakeRequest(GET, "/types/-1")).get
+      val res = route(FakeRequest(GET, "/types/sprocrest/-1")).get
       status(res) must_== 404
     }
 
     "find some expected procs" in new WithApplication {
-      val res = route(FakeRequest(GET, "/procs")).get
+      val res = route(FakeRequest(GET, "/procs/sprocrest")).get
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       ((json \ "(test_api,get_orders)").asInstanceOf[JsArray](0) \ "name").asInstanceOf[JsString].value must_== "get_orders"
     }
 
     "find some expected procs by namespace" in new WithApplication {
-      val res = route(FakeRequest(GET, "/procs/test_api")).get
+      val res = route(FakeRequest(GET, "/procs/sprocrest/test_api")).get
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       ((json \ "(test_api,get_orders)").asInstanceOf[JsArray](0) \ "name").asInstanceOf[JsString].value must_== "get_orders"
     }
 
     "find some exact procs" in new WithApplication {
-      val res = route(FakeRequest(GET, "/procs/test_api/get_orders")).get
+      val res = route(FakeRequest(GET, "/procs/sprocrest/test_api/get_orders")).get
       status(res) must_== 200
       val json = contentAsJson(res).asInstanceOf[JsObject]
       ((json \ "(test_api,get_orders)").asInstanceOf[JsArray](0) \ "name").asInstanceOf[JsString].value must_== "get_orders"
     }
 
     "return a 404 when calling non-existing sproc" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders_does_not_exist").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders_does_not_exist").withJsonBody {
         Json.parse(
           """
             |{
@@ -135,7 +142,7 @@ class RootControllerTest extends Specification {
     }
 
     "return a 400 when calling an overloaded sproc without enough arguments" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |{
@@ -147,7 +154,7 @@ class RootControllerTest extends Specification {
     }
 
     "return a 500 when passing malformed input arguments" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |{
@@ -161,7 +168,7 @@ class RootControllerTest extends Specification {
     }
 
     "return a 400 when posting weird json" in new WithApplication {
-      val res = route(FakeRequest(POST, "/call/test_api/get_orders").withJsonBody {
+      val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
           """
             |[

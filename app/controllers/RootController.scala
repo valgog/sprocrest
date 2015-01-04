@@ -1,44 +1,94 @@
 package controllers
 
-import database.StoredProcedureTypes.OID
+import database.CustomTypes.{Name, Namespace, OID}
 import database._
 import play.api.libs.json.{JsObject, JsValue, Json}
-import play.api.mvc.{Action, Controller, Request, Result}
+import play.api.mvc._
 
 import scala.language.reflectiveCalls
 import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
 
-  def types() = Action {
-    Ok(Json.toJson(StoredProcedures.types.get.map(kv => kv._1.toString -> kv._2)))
+//  @inline final def forDatabaseName[K, V, M <: Map[K,V], A <: Action](databaseName: String, m: Map[Database, M])(f: M => A): A = {
+//    val database = Database.byName(databaseName)
+//    m.get(database).fold(NotFound(s"Database configuration for $databaseName not found")) {
+//      element: M => f(element)
+//    }
+//  }
+
+  def databases() = Action {
+    Ok(Json.toJson(Database.configuredDatabases))
   }
 
-  def typeOf(id: Long) = Action {
-    val allTypes: Map[OID, DbType] = StoredProcedures.types.get
-    allTypes.get(id: OID).fold(NotFound: Result) { typ =>
-      Ok(Json.toJson(typ))
+  def types() = Action {
+    val tid = StoredProcedures.types.get
+    Ok(Json.toJson(o = tid map { case (db, ti) => db.name.toString -> ti.map{case (oid, t) => oid.toString -> t} } ))
+  }
+
+  def typesForDatabase(database: String) = Action {
+    val tid = StoredProcedures.types.get
+
+    tid.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+      ti => Ok(Json.toJson(ti map { case (oid, t) => oid.toString -> t } ))
+    }
+  }
+
+  def typeOf(database: String, id: Long) = Action {
+    // Types per OID per database
+    val tid = StoredProcedures.types.get
+
+    tid.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+      ti => ti.get(id: OID).fold(NotFound(s"Type with OID $id not found in database $database")) {
+        t => Ok(Json.toJson(t))
+      }
     }
   }
 
   def procs() = Action {
-    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().map(kv => kv._1.toString -> kv._2)))
+    Ok(Json.toJson(StoredProcedures.storedProcedures.get.map { case (db, sn) => db.name.toString -> sn.map{case (n, s) => n.toString -> s} }))
   }
 
-  def procForNamespace(namespace: String) = Action {
-    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1._1 == namespace).map(kv => kv._1.toString -> kv._2)))
+  def procsForDatabase(database: String) = Action {
+    // Stored procedures per name per database
+    val snd = StoredProcedures.storedProcedures.get
+
+    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+      // Stored procedures per name
+      sn => Ok(Json.toJson(sn map { case (name, sproc) => name.toString -> sproc }))
+    }
   }
 
-  def procEntry(namespace: String, name: String) = Action {
-    Ok(Json.toJson(StoredProcedures.loadStoredProcedures().filter(_._1 ==(namespace, name)).map(kv => kv._1.toString -> kv._2)))
+  def procsForNamespace(database: String, namespace: String) = Action {
+    // Stored procedures per name per database
+    val snd = StoredProcedures.storedProcedures.get
+
+    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+      // Stored procedures per name
+      sn => Ok(Json.toJson(sn filterKeys ( _._1 == namespace ) map { case (name, sproc) => name.toString -> sproc }))
+    }
   }
 
-  def call(namespace: String, name: String) = Action(parse.json) { implicit request: Request[JsValue] =>
+  def procEntry(database: String, namespace: String, name: String) = Action {
+    // Stored procedures per name per database
+    val snd = StoredProcedures.storedProcedures.get
+
+    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+      // Stored procedures per name
+      sn => Ok(Json.toJson(sn filterKeys ( _ == (namespace, name) ) map { case (name, sproc) => name.toString -> sproc }))
+    }
+  }
+
+  def call(database: String, namespace: String, name: String) = Action(parse.json) { implicit request: Request[JsValue] =>
 
     request.body match {
       case obj: JsObject =>
-        implicit val types = StoredProcedures.loadTypes()
-        val sprocs = StoredProcedures.storedProcedures.get.get((namespace, name))
+        val tid = StoredProcedures.types.get
+        implicit val db = Database.byName(database)
+        implicit val types = tid(db)
+
+        val snd = StoredProcedures.storedProcedures.get
+        val sprocs = snd(Database.byName(database)).get((namespace, name))
         val possibleSps: Seq[StoredProcedure] = sprocs.map {
             // what stored procedures can process the given incoming argument names?
             _.filter { (sproc: StoredProcedure) =>

@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicReference
 import akka.actor.{Actor, ActorLogging, Props}
 import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
+import play.api.{Application, Configuration}
 import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json._
@@ -16,13 +17,41 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.slick.jdbc.StaticQuery._
 import scala.util.{Failure, Random, Success}
 
-object StoredProcedureTypes {
+object CustomTypes {
+  type ClusterName = String
+  type DatabaseShardId = Int
   type OID = Long
   type Namespace = String
   type Name = String
 }
 
-import database.StoredProcedureTypes._
+import database.CustomTypes._
+
+case class Database(name: Name, cluster: ClusterName, shardId: Option[DatabaseShardId] = None)
+
+object Database {
+
+  implicit val format = Json.format[Database]
+
+  val databaseNamePattern = """^([^\d_]+)(\d+)?(?:_db)?$""".r("clusterName", "shardId")
+
+  def getConfiguredDatabases(implicit app: Application): Set[Database] = {
+    val databaseConfig = app.configuration.getConfig("db").getOrElse(Configuration.empty)
+    val databases = databaseConfig
+      .subKeys
+      .map {
+        case name@databaseNamePattern(clusterName, shardId) =>
+          if (shardId == null) Database(name, clusterName) else Database(name, clusterName, Some(shardId.toInt))
+        case name => throw databaseConfig.reportError(s"db.$name", s"Database datasource names should consist of cluster name and optional shard id")
+      }
+    databases
+  }
+
+  lazy val configuredDatabases: Set[Database] = getConfiguredDatabases
+  lazy val databaseByName: Map[String, Database] = configuredDatabases.map( d => d.name -> d ).toMap
+
+  def byName(databaseName: String): Database = databaseByName(databaseName)
+}
 
 case class Argument(name: Name, typeOid: OID, hasDefault: Boolean, mode: String)
 
@@ -41,6 +70,7 @@ case class MultipleException(exceptions: Seq[Throwable]) extends Exception {
 }
 
 case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments: Option[Seq[Argument]]) {
+
   def matches(argNames: Set[String]): Boolean = {
     // set of the stored procedure argument names
     val spArgNames = arguments.map { seq =>
@@ -63,8 +93,8 @@ case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments
       ( spArgNames.intersect(argNames) == argNames && spArgsMissingWithDefaults.isEmpty )
   }
 
-  def execute(sqlArgs: Seq[AnyRef]): Iterable[String] = {
-    DB.withSession { implicit session =>
+  def execute(sqlArgs: Seq[AnyRef])(implicit db: Database): Iterable[String] = {
+    DB(db.name).withSession { implicit session =>
       // somewhat hand-crafted sproc call, that returns json we stream directly back to the caller
       val preparedStatement = s"""
                          |SELECT to_json((f.*))
@@ -128,7 +158,7 @@ class BlockingPeriodicTask(name: String, f: () => Unit) extends Actor with Actor
       implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
       log.debug(s"Reloading $name")
       val future = Future {
-        f
+        f()
         log.debug(s"Reloaded $name")
       }
       future.onComplete {
@@ -164,26 +194,27 @@ object StoredProcedures {
       () => StoredProcedures.storedProcedures.set(StoredProcedures.loadStoredProcedures()))
   }
 
-  val types = new AtomicReference[Map[OID, DbType]](loadTypes())
-  val storedProcedures = new AtomicReference[Map[(Namespace, Name), Seq[StoredProcedure]]](loadStoredProcedures())
+  val types = new AtomicReference[Map[Database, Map[OID, DbType]]](loadTypes())
+  val storedProcedures = new AtomicReference[Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]]](loadStoredProcedures())
 
-  def loadTypes(): Map[OID, DbType] = {
-    DB.withSession { implicit session =>
+  def loadTypes(): Map[Database, Map[OID, DbType]] = {
+    Database.configuredDatabases.map { database =>
+      database -> DB(database.name).withSession { implicit session =>
 
-      // load all types known to the system
-      val dbTypes: Seq[DbType] = {
-        sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
+        // load all types known to the system
+        val dbTypes: Seq[DbType] = {
+          sql"""SELECT t.oid AS type_oid, nspname, typname, typarray, typtype
                 FROM pg_type AS t, pg_namespace AS n
                WHERE t.typnamespace = n.oid""".as[(OID, Namespace, Name, OID, String)].list.toSeq.map {
-          case (typeOid, namespace, name, arrayOid, typeChar) =>
-            DbType(namespace = namespace, name = name, typeOid = typeOid,
-              arrayOid = if (arrayOid == (0: OID)) None else Some(arrayOid), None, typeChar)
+            case (typeOid, namespace, name, arrayOid, typeChar) =>
+              DbType(namespace = namespace, name = name, typeOid = typeOid,
+                arrayOid = if (arrayOid == (0: OID)) None else Some(arrayOid), None, typeChar)
+          }
         }
-      }
 
-      // load all the attributes of complex types
-      val attributesByOwner: Map[OID, Seq[(OID, Name, Int, OID)]] = {
-        sql"""SELECT c.reltype AS owning_type_oid,
+        // load all the attributes of complex types
+        val attributesByOwner: Map[OID, Seq[(OID, Name, Int, OID)]] = {
+          sql"""SELECT c.reltype AS owning_type_oid,
                      a.attname AS attribute_name,
                      a.attnum AS attribute_position,
                      a.atttypid AS attribute_type_oid
@@ -193,46 +224,47 @@ object StoredProcedures {
                  AND NOT a.attisdropped
                  AND c.relkind IN ('r', 'v', 'm', 'c', 'f')
                ORDER BY owning_type_oid, attribute_position""".as[(OID, Name, Int, OID)].
-          list.toSeq.groupBy(_._1).
-          mapValues(v => v.sortBy(_._3))
-      }
-
-      // populate complex types with their attributes
-      val withAttributes: Seq[DbType] = dbTypes.map { dbType =>
-        val attrTuples: Seq[(OID, Name, Int, OID)] = attributesByOwner.getOrElse(dbType.typeOid, Seq.empty)
-        val attrs = attrTuples.map {
-          case (parentOid, name, pos, typeOid) => Attribute(name, typeOid)
+            list.toSeq.groupBy(_._1).
+            mapValues(v => v.sortBy(_._3))
         }
-        if (attrs.nonEmpty) dbType.copy(attributes = Some(attrs)) else dbType
+
+        // populate complex types with their attributes
+        val withAttributes: Seq[DbType] = dbTypes.map { dbType =>
+          val attrTuples: Seq[(OID, Name, Int, OID)] = attributesByOwner.getOrElse(dbType.typeOid, Seq.empty)
+          val attrs = attrTuples.map {
+            case (parentOid, name, pos, typeOid) => Attribute(name, typeOid)
+          }
+          if (attrs.nonEmpty) dbType.copy(attributes = Some(attrs)) else dbType
+        }
+
+        // build a map of array oid -> type it contains
+        val arrayOidToTypeOid: Map[OID, Option[OID]] =
+          withAttributes.filter(_.arrayOid.isDefined).map(dbType => dbType.arrayOid.get -> Some(dbType.typeOid)).toMap
+
+        // inject the reference to the contained type into each array type
+        val typesWithArrays = dbTypes.map { dbType =>
+          arrayOidToTypeOid.get(dbType.typeOid).map(contained => dbType.copy(containedType = contained)).getOrElse(dbType)
+        }
+
+        // group into a map so we can lookup types by oid
+        val grouped: Map[OID, Seq[DbType]] = typesWithArrays.groupBy(_.typeOid)
+
+        // reduce to a map of oid -> dbType, and make sure there is exactly 1 type for each OID
+        grouped.map { case (oid, values) =>
+          require(values.size == 1, s"Type $oid has multiple values: [$values]")
+          oid -> values.head
+        }
       }
-
-      // build a map of array oid -> type it contains
-      val arrayOidToTypeOid: Map[OID, Option[OID]] =
-        withAttributes.filter(_.arrayOid.isDefined).map(dbType => dbType.arrayOid.get -> Some(dbType.typeOid)).toMap
-
-      // inject the reference to the contained type into each array type
-      val typesWithArrays = dbTypes.map { dbType =>
-        arrayOidToTypeOid.get(dbType.typeOid).map(contained => dbType.copy(containedType = contained)).getOrElse(dbType)
-      }
-
-      // group into a map so we can lookup types by oid
-      val grouped: Map[OID, Seq[DbType]] = typesWithArrays.groupBy(_.typeOid)
-
-      // reduce to a map of oid -> dbType, and make sure there is exactly 1 type for each OID
-      grouped.map { case (oid, values) =>
-        require(values.size == 1, s"Type $oid has multiple values: [$values]")
-        oid -> values.head
-      }
-    }
+    }.toMap
   }
 
-  def loadStoredProcedures(): Map[(Namespace, Name), Seq[StoredProcedure]] = {
-    DB.withSession { implicit session =>
-
-      // build a map of procId to a list of that proc's arguments
-      val argumentsByProcOID: Map[OID, Seq[Argument]] = {
-        val rows =
-          sql"""SELECT prooid,
+  def loadStoredProcedures(): Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]] = {
+    Database.configuredDatabases.map { database =>
+      database -> DB(database.name).withSession { implicit session =>
+        // build a map of procId to a list of that proc's arguments
+        val argumentsByProcOID: Map[OID, Seq[Argument]] = {
+          val rows =
+            sql"""SELECT prooid,
                        row_number() OVER w AS position,
                        row_number() OVER w > count(1) OVER c - pronargdefaults AS has_default,
                        COALESCE(proargmodes[i], 'i') AS param_mode,
@@ -253,25 +285,26 @@ object StoredProcedures {
                 WINDOW c AS (PARTITION BY prooid),
                        w AS (c ORDER BY i)""".as[(OID, Int, Boolean, String, Name, OID)].list.toSeq
 
-        rows.groupBy(_._1).mapValues {
-          _.sortBy(_._2).map {
-            case (_, _, hasDefault, mode, name, typeOID) => Argument(name, typeOID, hasDefault, mode)
+          rows.groupBy(_._1).mapValues {
+            _.sortBy(_._2).map {
+              case (_, _, hasDefault, mode, name, typeOID) => Argument(name, typeOID, hasDefault, mode)
+            }
           }
         }
-      }
 
-      // load all stored procedures, and inject each ones arguments, if any
-      sql"""SELECT p.oid AS proc_oid,
+        // load all stored procedures, and inject each ones arguments, if any
+        sql"""SELECT p.oid AS proc_oid,
                    nspname,
                    proname
               FROM pg_proc AS p
               JOIN pg_namespace AS n ON p.pronamespace = n.oid
              WHERE NOT proisagg
                AND NOT proiswindow""".as[(OID, Namespace, Name)].list.toSeq.map {
-        case (procOID, procNamespace, procName) =>
-          StoredProcedure(procNamespace, procName, procOID, argumentsByProcOID.get(procOID).filter(_.nonEmpty))
-      } groupBy (v => (v.namespace, v.name))
-    }
+          case (procOID, procNamespace, procName) =>
+            StoredProcedure(procNamespace, procName, procOID, argumentsByProcOID.get(procOID).filter(_.nonEmpty))
+        } groupBy (v => (v.namespace, v.name))
+      }
+    }.toMap
   }
 
   val simpleTypeConverter: PartialFunction[DbType, JsValue => AnyRef] = {
