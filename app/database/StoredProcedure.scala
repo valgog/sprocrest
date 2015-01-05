@@ -45,7 +45,7 @@ object Database {
     }
   }
 
-  lazy val databaseByName: Map[String, Database] = configuredDatabases.map( d => d.name -> d ).toMap
+  lazy val databaseByName: Map[String, Database] = configuredDatabases.groupBy(_.name).mapValues(_.head)
 
   def byName(databaseName: String): Database = databaseByName(databaseName)
 }
