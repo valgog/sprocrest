@@ -1,10 +1,14 @@
 language: scala
+
 scala:
     - 2.11.4
+
 jdk:
     - oraclejdk8
+
 addons:
     postgresql: "9.3"
+
 before_script:
     - bash bin/bootstrap_database.bash
 
