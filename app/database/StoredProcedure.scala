@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicReference
 import akka.actor.{Actor, ActorLogging, Props}
 import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
-import play.api.{Application, Configuration}
+import play.api.Configuration
 import play.api.Play.current
 import play.api.db.slick.DB
 import play.api.libs.json._
@@ -35,19 +35,16 @@ object Database {
 
   val databaseNamePattern = """^([^\d_]+)(\d+)?(?:_db)?$""".r("clusterName", "shardId")
 
-  def getConfiguredDatabases(implicit app: Application): Set[Database] = {
+  lazy val configuredDatabases: Set[Database] = {
+    import play.api.Play.{current => app}
     val databaseConfig = app.configuration.getConfig("db").getOrElse(Configuration.empty)
-    val databases = databaseConfig
-      .subKeys
-      .map {
-        case name@databaseNamePattern(clusterName, shardId) =>
-          if (shardId == null) Database(name, clusterName) else Database(name, clusterName, Some(shardId.toInt))
-        case name => throw databaseConfig.reportError(s"db.$name", s"Database datasource names should consist of cluster name and optional shard id")
-      }
-    databases
+    databaseConfig.subKeys.map {
+      case name@databaseNamePattern(clusterName, shardId) => Database(name, clusterName, Option(shardId).map(_.toInt))
+      case name => throw databaseConfig.reportError(
+        s"db.$name", s"Database datasource names should consist of cluster name and optional shard id")
+    }
   }
 
-  lazy val configuredDatabases: Set[Database] = getConfiguredDatabases
   lazy val databaseByName: Map[String, Database] = configuredDatabases.map( d => d.name -> d ).toMap
 
   def byName(databaseName: String): Database = databaseByName(databaseName)
