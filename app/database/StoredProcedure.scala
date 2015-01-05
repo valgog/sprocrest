@@ -3,7 +3,7 @@ package database
 import java.sql.Timestamp
 import java.util.concurrent.atomic.AtomicReference
 
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.Props
 import de.zalando.typemapper.postgres.PgArray
 import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Configuration
@@ -12,10 +12,7 @@ import play.api.db.slick.DB
 import play.api.libs.json._
 
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.forkjoin.ForkJoinPool
-import scala.concurrent.{ExecutionContext, Future}
 import scala.slick.jdbc.StaticQuery._
-import scala.util.{Failure, Random, Success}
 
 object CustomTypes {
   type ClusterName = String
@@ -136,49 +133,6 @@ object DbType {
   implicit val format = Json.format[DbType]
 }
 
-object Loaders {
-
-  object ReloadAll
-
-}
-
-class BlockingPeriodicTask(name: String, f: () => Unit) extends Actor with ActorLogging {
-
-  import database.Loaders._
-
-  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
-    log.error(s"Restarting $name: $reason $message")
-  }
-
-  override def receive: Receive = {
-    case ReloadAll =>
-      implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(new ForkJoinPool())
-      log.debug(s"Reloading $name")
-      val future = Future {
-        f()
-        log.debug(s"Reloaded $name")
-      }
-      future.onComplete {
-        case Failure(x) => throw x
-        case Success(_) => ()
-      }
-  }
-
-}
-
-class PeriodicTaskSupervisor extends Actor with ActorLogging {
-
-  override def receive: Receive = {
-    case p: Props =>
-      import scala.concurrent.ExecutionContext.Implicits.global
-      import scala.concurrent.duration._
-      // todo maybe not the right one
-      val child = context.actorOf(p)
-      context.system.scheduler.schedule(Random.nextInt(5).seconds, 5.seconds) {
-        child ! Loaders.ReloadAll
-      }
-  }
-}
 
 object StoredProcedures {
 
