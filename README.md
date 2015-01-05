@@ -67,6 +67,9 @@ What things are still to be done:
   - [x] map and pass simple types
   - [ ] map and pass complex types
 - [ ] support more then one database (especially database shards)
+  - [x] enable to configure more then one database in the config
+  - [ ] enable support for DDS (Database Discovery Service) configuration
+  - [ ] treat shards as belonging to one merged database
 - [ ] merge results from several database shards
 - [ ] support stored procedure annotations
   - [ ] sharding strategies
