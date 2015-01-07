@@ -101,6 +101,26 @@ class RootControllerTest extends Specification {
       (json \ "name").asInstanceOf[JsString].value must_== "bool"
     }
 
+    "find a complex type and confirm it has attributes" in new WithApplication {
+      val res = route(FakeRequest(GET, "/types/sprocrest")).get
+      status(res) must_== 200
+      val json = contentAsJson(res).asInstanceOf[JsObject]
+      val orderItems = json.value.collect {
+        case (_, jsObject: JsObject) if  jsObject.value("namespace") == JsString("test_api") &&
+          jsObject.value("name") == JsString("order_item") => jsObject
+      }
+      orderItems.size must_== 1
+      val orderItem = orderItems.head
+      orderItem.value("attributes") match {
+        case attrs: JsArray =>
+          attrs.value.collect {
+            case obj: JsObject if obj.value("name") == JsString("sku") => obj
+            case obj: JsObject if obj.value("name") == JsString("description") => obj
+          }.size must_== 2
+        case unknown => failure(s"Unexpected attributes type: $unknown (${unknown.getClass})")
+      }
+    }
+
     "behave as expected looking for non-existing types" in new WithApplication {
       val res = route(FakeRequest(GET, "/types/sprocrest/-1")).get
       status(res) must_== 404

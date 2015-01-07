@@ -7,11 +7,13 @@ parallelExecution in Test := true
 
 resolvers += Resolver.url("Edulify Repository", url("http://edulify.github.io/modules/releases/"))(Resolver.ivyStylePatterns)
 
+resolvers += "Local Maven" at Path.userHome.asFile.toURI.toURL + ".m2/repository"
+
 libraryDependencies ++= Seq(
   jdbc,
   "com.typesafe.akka" %% "akka-actor" % "2.3.8",
   "com.jsuereth" % "scala-arm_2.11" % "1.4",
-  "de.zalando" % "zalando-sprocwrapper" % "1.0.6" excludeAll(
+  "de.zalando" % "zalando-sprocwrapper" % "1.2.3" excludeAll(
     ExclusionRule(organization = "org.springframework"),
     ExclusionRule(organization = "com.jolbox"),
     ExclusionRule(organization = "org.postgresql"),

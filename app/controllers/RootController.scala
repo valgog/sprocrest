@@ -83,9 +83,8 @@ object RootController extends Controller {
 
     request.body match {
       case obj: JsObject =>
-        val tid = StoredProcedures.types.get
         implicit val db = Database.byName(database)
-        implicit val types = tid(db)
+        implicit val types = StoredProcedures.types.get()(db)
 
         val snd = StoredProcedures.storedProcedures.get
         val sprocs = snd(Database.byName(database)).get((namespace, name))

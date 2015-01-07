@@ -4,7 +4,7 @@ import java.sql.Timestamp
 import java.util.concurrent.atomic.AtomicReference
 
 import akka.actor.Props
-import de.zalando.typemapper.postgres.PgArray
+import de.zalando.typemapper.postgres.{PgRow, PgArray}
 import org.joda.time.format.ISODateTimeFormat.dateTime
 import play.api.Configuration
 import play.api.Play.current
@@ -193,7 +193,7 @@ object StoredProcedures {
           withAttributes.filter(_.arrayOid.isDefined).map(dbType => dbType.arrayOid.get -> Some(dbType.typeOid)).toMap
 
         // inject the reference to the contained type into each array type
-        val typesWithArrays = dbTypes.map { dbType =>
+        val typesWithArrays = withAttributes.map { dbType =>
           arrayOidToTypeOid.get(dbType.typeOid).map(contained => dbType.copy(containedType = contained)).getOrElse(dbType)
         }
 
@@ -214,7 +214,7 @@ object StoredProcedures {
       database -> DB(database.name).withSession { implicit session =>
         // build a map of procId to a list of that proc's arguments
         val argumentsByProcOID: Map[OID, Seq[Argument]] = {
-          val rows =
+          val rows: Seq[(OID, Int, Boolean, String, Name, OID)] =
             sql"""SELECT prooid,
                        row_number() OVER w AS position,
                        row_number() OVER w > count(1) OVER c - pronargdefaults AS has_default,
@@ -243,7 +243,7 @@ object StoredProcedures {
           }
         }
 
-        // load all stored procedures, and inject each ones arguments, if any
+        // load all stored procedures, and inject each one's arguments, if any
         sql"""SELECT p.oid AS proc_oid,
                    nspname,
                    proname
@@ -257,6 +257,35 @@ object StoredProcedures {
       }
     }.toMap
   }
+
+  def arrayTypeConverter(implicit table: OID => DbType): PartialFunction[DbType, JsValue => AnyRef] = {
+    case argType if argType.containedType.isDefined =>
+      val containedType = table(argType.containedType.get)
+
+      {
+        case array: JsArray =>
+          val converted: Seq[AnyRef] = array.value.map(simpleTypeConverter(containedType))
+          import scala.collection.JavaConverters._
+          PgArray.ARRAY(converted.asJava)
+        case other => sys.error(s"Don't know how to convert $argType container of $containedType")
+      }
+  }
+
+  def complexTypeConverter(implicit table: OID => DbType): PartialFunction[DbType, JsValue => AnyRef] = {
+    case argType =>
+
+      {
+        case obj: JsObject =>
+          val typeValPairs: Seq[(OID, JsValue)] = argType.attributes.getOrElse(Nil).map(_.typeOid).zip(obj.fields.map(_._2))
+          val pgVals: Seq[AnyRef] = typeValPairs.map {
+            case (oid, jsVal) => sqlConverter(table(oid))(table)(jsVal)
+          }
+          import scala.collection.JavaConverters._
+          PgRow.ROW(pgVals.asJava)
+        case other => sys.error(s"Don't know how to convert $argType as a complex object $other")
+      }
+  }
+
 
   val simpleTypeConverter: PartialFunction[DbType, JsValue => AnyRef] = {
     case DbType("pg_catalog", "int2", _, _, _, _, _) => {
@@ -302,21 +331,6 @@ object StoredProcedures {
   }
 
   def sqlConverter(argType: DbType)(implicit table: OID => DbType): JsValue => AnyRef = {
-
-    if (simpleTypeConverter.isDefinedAt(argType)) {
-      simpleTypeConverter(argType)
-    } else if (argType.containedType.isDefined) {
-      val containedType = table(argType.containedType.get)
-
-      {
-        case array: JsArray =>
-          val converted: Seq[AnyRef] = array.value.map(simpleTypeConverter(containedType))
-          import scala.collection.JavaConverters._
-          PgArray.ARRAY(converted.asJava)
-        case other => sys.error(s"Don't know how to convert $argType container of $containedType")
-      }
-    } else {
-      sys.error(s"We don't handle complex types yet: $argType")
-    }
+    (simpleTypeConverter orElse arrayTypeConverter orElse complexTypeConverter)(argType)
   }
 }
