@@ -71,8 +71,6 @@ case class StoredProcedure(namespace: Namespace, name: Name, oid: OID, arguments
       seq.map(_.name).toSet
     }.getOrElse(Set.empty)
 
-    println(s"stored procedure argument names are $spArgNames")
-
     // set of sp arguments that must have a default value for this call to succeed
     val spArgsMustHaveDefault = spArgNames.diff(argNames)
 

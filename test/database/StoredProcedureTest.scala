@@ -42,8 +42,6 @@ class StoredProcedureTest extends Specification {
       import scala.collection.JavaConverters._
       val is = StoredProcedures.arrayTypeConverter(table)(dbType("_int2"))(JsArray(Seq(JsNumber(10))))
       val shouldBe = PgArray.ARRAY(Seq(10).map(_.toShort).asJava)
-      is.equals(shouldBe)
-      println(s"is = $is, shouldBe = $shouldBe, == ${is.equals(shouldBe)}")
       is must_== shouldBe
     }
 
