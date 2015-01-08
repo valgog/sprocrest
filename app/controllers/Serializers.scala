@@ -1,40 +1,44 @@
 package controllers
 
 import database.CustomTypes.{Name, Namespace, OID}
-import database.{Database, StoredProcedure, DbType}
+import database.{Database, DbType, StoredProcedure}
 import play.api.libs.json._
 
+// mostly these are to avoid having to cast the keys to string (in which case
+// the built in Writers work ok. Feels like there should be an easier way.
 object Serializers {
-
-  implicit val oidWriter = new Writes[OID] {
-    override def writes(o: OID) = JsString(o.toString)
-  }
 
   implicit val mapOidDbType = new Writes[Map[OID, DbType]] {
     override def writes(o: Map[OID, DbType]): JsValue = {
-      JsObject(o.map(kv => kv._1.toString -> Json.toJson(kv._2)).toSeq)
-    }
-  }
-
-  implicit val writeNameToSprocs = new Writes[Map[(Namespace,Name), Seq[StoredProcedure]]] {
-    override def writes(sprocs: Map[(Namespace, Name), Seq[StoredProcedure]]): JsValue = {
-      JsObject(sprocs.map(kv => kv._1.toString -> Json.toJson(kv._2)).toSeq)
-    }
-  }
-
-  implicit val writeDbToTypesMap = new Writes[Map[Database,Map[(Namespace,Name), Seq[StoredProcedure]]]] {
-    override def writes(o: Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]]): JsValue = {
       JsObject {
         o.map {
-          case (database, sprocs) =>
-            database.name.toString -> Json.toJson(sprocs)
+          case (oid, dbType) => oid.toString -> Json.toJson(dbType)
         }.toSeq
       }
     }
   }
 
-  // Map[database.Database,Map[database.CustomTypes.OID,database.DbType]]
-  implicit val writeDbtoDbTypes = new Writes[Map[Database,Map[OID,DbType]]] {
+  implicit val writeNameToSprocs = new Writes[Map[(Namespace, Name), Seq[StoredProcedure]]] {
+    override def writes(sprocs: Map[(Namespace, Name), Seq[StoredProcedure]]): JsValue = {
+      JsObject {
+        sprocs.map {
+          case (key, procs) => key.toString -> Json.toJson(procs)
+        }.toSeq
+      }
+    }
+  }
+
+  implicit val writeDbToTypesMap = new Writes[Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]]] {
+    override def writes(o: Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]]): JsValue = {
+      JsObject {
+        o.map {
+          case (database, sprocs) => database.name -> Json.toJson(sprocs)
+        }.toSeq
+      }
+    }
+  }
+
+  implicit val writeDbtoDbTypes = new Writes[Map[Database, Map[OID, DbType]]] {
     override def writes(o: Map[Database, Map[OID, DbType]]): JsValue = {
       JsObject {
         o.map {

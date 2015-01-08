@@ -10,11 +10,11 @@ import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
 
-  import Serializers._
+  import controllers.Serializers._
 
-  def withTypes[A](databaseName: String)
-                  (f: Map[OID, DbType] => Either[String, A])
-                  (implicit writer: Writes[A]): Result = {
+  private def withTypes[A](databaseName: String)
+                          (f: Map[OID, DbType] => Either[String, A])
+                          (implicit writer: Writes[A]): Result = {
     val typeMap = StoredProcedures.types.get
     val database = Database.byName(databaseName)
     typeMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result) {
@@ -25,9 +25,9 @@ object RootController extends Controller {
     }
   }
 
-  def withStoredProcedures[A](databaseName: String)
-                             (f: Map[(Namespace, Name), Seq[StoredProcedure]] => A)
-                             (implicit writer: Writes[A]): Result = {
+  private def withStoredProcedures[A](databaseName: String)
+                                     (f: Map[(Namespace, Name), Seq[StoredProcedure]] => A)
+                                     (implicit writer: Writes[A]): Result = {
     val procMap = StoredProcedures.storedProcedures.get()
     val database = Database.byName(databaseName)
     procMap.get(database).fold[Result](NotFound(s"Database configuration for $databaseName not found"))(m => Ok(Json.toJson(f(m))))
