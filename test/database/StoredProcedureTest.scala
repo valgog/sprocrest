@@ -2,6 +2,8 @@ package database
 
 import database.CustomTypes.OID
 import de.zalando.typemapper.postgres.{PgRow, PgArray}
+import PgRow.ROW
+import PgArray.ARRAY
 import org.joda.time.format.ISODateTimeFormat
 import org.specs2.mutable._
 import play.api.libs.json.{Json, JsArray, JsString, JsNumber}
@@ -41,11 +43,11 @@ class StoredProcedureTest extends Specification {
         containedType = table.find(_._2.name == "int2").map(_._2.typeOid), typeChar = "", attributes = None)
       import scala.collection.JavaConverters._
       val is = StoredProcedures.arrayTypeConverter(table)(dbType("_int2"))(JsArray(Seq(JsNumber(10))))
-      val shouldBe = PgArray.ARRAY(Seq(10).map(_.toShort).asJava)
+      val shouldBe = ARRAY(Seq(10).map(_.toShort).asJava)
       is must_== shouldBe
     }
 
-    "convert complex object types from json to sql-friendly types" in new WithApplication() {
+    "convert complex object types from json to sql-friendly types" in new WithApplication {
       val obj = Json.parse {
         """
           |{
@@ -60,7 +62,33 @@ class StoredProcedureTest extends Specification {
         case dbt@DbType("test_api", "order_item", _, _, _, _, _) => dbt
       }.head
       val is = StoredProcedures.complexTypeConverter(table)(dbType)(obj)
-      is must_== PgRow.ROW("i'm a sku", "i'm a description")
+      is must_== ROW("i'm a sku", "i'm a description")
+    }
+
+    "convert nested array of complex object types from json to sql-friendly types" in new WithApplication {
+      val obj = Json.parse {
+        """
+          |{
+          |  "order_items": [
+          |     {
+          |       "sku": "i'm a sku",
+          |       "description": "i'm a description"
+          |     },
+          |     {
+          |       "sku": "i'm another sku",
+          |       "description": "i'm another description"
+          |     }
+          |  ]
+          |}
+        """.stripMargin
+      }
+      implicit val database = Database.configuredDatabases.head
+      val table: Map[OID, DbType] = StoredProcedures.types.get()(database)
+      val dbType = table.values.collect {
+        case dbt@DbType("test_api", "nested_order_items", _, _, _, _, _) => dbt
+      }.head
+      val is = StoredProcedures.complexTypeConverter(table)(dbType)(obj)
+      is must_== ROW(ARRAY(ROW("i'm a sku", "i'm a description"), ROW("i'm another sku", "i'm another description")))
     }
   }
 }

@@ -262,7 +262,7 @@ object StoredProcedures {
 
       {
         case array: JsArray =>
-          val converted: Seq[AnyRef] = array.value.map(simpleTypeConverter(containedType))
+          val converted: Seq[AnyRef] = array.value.map(sqlConverter(containedType))
           import scala.collection.JavaConverters._
           PgArray.ARRAY(converted.asJava)
         case other => sys.error(s"Don't know how to convert $argType container of $containedType")

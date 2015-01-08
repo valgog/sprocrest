@@ -65,8 +65,8 @@ What things are still to be done:
   - [x] return simple and complex types
   - [x] support parameter overloading
   - [x] map and pass simple types
-  - [ ] map and pass complex types
-- [ ] support more then one database (especially database shards)
+  - [x] map and pass complex types
+- [ ] support more than one database (especially database shards)
   - [x] enable to configure more then one database in the config
   - [ ] enable support for DDS (Database Discovery Service) configuration
   - [ ] treat shards as belonging to one merged database
