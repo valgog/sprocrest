@@ -10,35 +10,35 @@ import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
 
-//  @inline final def forDatabaseName[K, V, M <: Map[K,V], A <: Action](databaseName: String, m: Map[Database, M])(f: M => A): A = {
-//    val database = Database.byName(databaseName)
-//    m.get(database).fold(NotFound(s"Database configuration for $databaseName not found")) {
-//      element: M => f(element)
-//    }
-//  }
+  def withTypes(databaseName: String)(f: Map[OID, DbType] => Result): Result = {
+    val typeMap = StoredProcedures.types.get
+    val database = Database.byName(databaseName)
+    typeMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result)(f)
+  }
+
+  def withStoredProcedures(databaseName: String)(f: Map[(Namespace, Name), Seq[StoredProcedure]] => Result): Result = {
+    val procMap = StoredProcedures.storedProcedures.get()
+    val database = Database.byName(databaseName)
+    procMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result)(f)
+  }
 
   def databases() = Action {
     Ok(Json.toJson(Database.configuredDatabases))
   }
 
   def types() = Action {
-    val tid = StoredProcedures.types.get
+    val tid: Map[Database, Map[OID, DbType]] = StoredProcedures.types.get
     Ok(Json.toJson(o = tid map { case (db, ti) => db.name.toString -> ti.map{case (oid, t) => oid.toString -> t} } ))
   }
 
   def typesForDatabase(database: String) = Action {
-    val tid = StoredProcedures.types.get
-
-    tid.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
-      ti => Ok(Json.toJson(ti map { case (oid, t) => oid.toString -> t } ))
+    withTypes(database) {
+      types => Ok(Json.toJson(types.map(kv => kv._1.toString -> kv._2)))
     }
   }
 
   def typeOf(database: String, id: Long) = Action {
-    // Types per OID per database
-    val tid = StoredProcedures.types.get
-
-    tid.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
+    withTypes(database) {
       ti => ti.get(id: OID).fold(NotFound(s"Type with OID $id not found in database $database")) {
         t => Ok(Json.toJson(t))
       }
@@ -53,19 +53,15 @@ object RootController extends Controller {
     // Stored procedures per name per database
     val snd = StoredProcedures.storedProcedures.get
 
-    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
-      // Stored procedures per name
-      sn => Ok(Json.toJson(sn map { case (name, sproc) => name.toString -> sproc }))
+    withStoredProcedures(database) {
+      sn => Ok(Json.toJson(sn.map(kv => kv._1.toString -> kv._2)))
     }
   }
 
   def procsForNamespace(database: String, namespace: String) = Action {
     // Stored procedures per name per database
-    val snd = StoredProcedures.storedProcedures.get
-
-    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
-      // Stored procedures per name
-      sn => Ok(Json.toJson(sn filterKeys ( _._1 == namespace ) map { case (name, sproc) => name.toString -> sproc }))
+    withStoredProcedures(database) {
+      sn => Ok(Json.toJson(sn.filterKeys( _._1 == namespace ).map(kv => kv._1.toString -> kv._2)))
     }
   }
 
@@ -73,9 +69,8 @@ object RootController extends Controller {
     // Stored procedures per name per database
     val snd = StoredProcedures.storedProcedures.get
 
-    snd.get(Database.byName(database)).fold(NotFound(s"Database configuration for $database not found")) {
-      // Stored procedures per name
-      sn => Ok(Json.toJson(sn filterKeys ( _ == (namespace, name) ) map { case (name, sproc) => name.toString -> sproc }))
+    withStoredProcedures(database) {
+      sn => Ok(Json.toJson(sn.filterKeys( _ == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
     }
   }
 
