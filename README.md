@@ -61,7 +61,7 @@ What things are still to be done:
   - [x] load type information
   - [x] load stored procedure signatures
   - [x] periodic reloading of metadata
-- [ ] call stored procedures
+- [x] call stored procedures
   - [x] return simple and complex types
   - [x] support parameter overloading
   - [x] map and pass simple types
