@@ -2,7 +2,7 @@ package controllers
 
 import database.CustomTypes.{Name, Namespace, OID}
 import database._
-import play.api.libs.json.{JsObject, JsValue, Json}
+import play.api.libs.json._
 import play.api.mvc._
 
 import scala.language.reflectiveCalls
@@ -10,16 +10,27 @@ import scala.util.{Failure, Success, Try}
 
 object RootController extends Controller {
 
-  def withTypes(databaseName: String)(f: Map[OID, DbType] => Result): Result = {
+  import Serializers._
+
+  def withTypes[A](databaseName: String)
+                  (f: Map[OID, DbType] => Either[String, A])
+                  (implicit writer: Writes[A]): Result = {
     val typeMap = StoredProcedures.types.get
     val database = Database.byName(databaseName)
-    typeMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result)(f)
+    typeMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result) {
+      m => f(m) match {
+        case Right(r) => Ok(Json.toJson(r))
+        case Left(msg) => NotFound(msg)
+      }
+    }
   }
 
-  def withStoredProcedures(databaseName: String)(f: Map[(Namespace, Name), Seq[StoredProcedure]] => Result): Result = {
+  def withStoredProcedures[A](databaseName: String)
+                             (f: Map[(Namespace, Name), Seq[StoredProcedure]] => A)
+                             (implicit writer: Writes[A]): Result = {
     val procMap = StoredProcedures.storedProcedures.get()
     val database = Database.byName(databaseName)
-    procMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result)(f)
+    procMap.get(database).fold[Result](NotFound(s"Database configuration for $databaseName not found"))(m => Ok(Json.toJson(f(m))))
   }
 
   def databases() = Action {
@@ -27,51 +38,35 @@ object RootController extends Controller {
   }
 
   def types() = Action {
-    val tid: Map[Database, Map[OID, DbType]] = StoredProcedures.types.get
-    Ok(Json.toJson(o = tid map { case (db, ti) => db.name.toString -> ti.map{case (oid, t) => oid.toString -> t} } ))
+    Ok(Json.toJson(StoredProcedures.types.get))
   }
 
   def typesForDatabase(database: String) = Action {
     withTypes(database) {
-      types => Ok(Json.toJson(types.map(kv => kv._1.toString -> kv._2)))
+      types => Right(types)
     }
   }
 
   def typeOf(database: String, id: Long) = Action {
     withTypes(database) {
-      ti => ti.get(id: OID).fold(NotFound(s"Type with OID $id not found in database $database")) {
-        t => Ok(Json.toJson(t))
-      }
+      _.get(id: OID).fold[Either[String, DbType]](Left(s"Type with OID $id not found in database $database"))(Right.apply)
     }
   }
 
   def procs() = Action {
-    Ok(Json.toJson(StoredProcedures.storedProcedures.get.map { case (db, sn) => db.name.toString -> sn.map{case (n, s) => n.toString -> s} }))
+    Ok(Json.toJson(StoredProcedures.storedProcedures.get))
   }
 
   def procsForDatabase(database: String) = Action {
-    // Stored procedures per name per database
-    val snd = StoredProcedures.storedProcedures.get
-
-    withStoredProcedures(database) {
-      sn => Ok(Json.toJson(sn.map(kv => kv._1.toString -> kv._2)))
-    }
+    withStoredProcedures(database)(identity)
   }
 
   def procsForNamespace(database: String, namespace: String) = Action {
-    // Stored procedures per name per database
-    withStoredProcedures(database) {
-      sn => Ok(Json.toJson(sn.filterKeys( _._1 == namespace ).map(kv => kv._1.toString -> kv._2)))
-    }
+    withStoredProcedures(database)(_.filterKeys(_._1 == namespace))
   }
 
   def procEntry(database: String, namespace: String, name: String) = Action {
-    // Stored procedures per name per database
-    val snd = StoredProcedures.storedProcedures.get
-
-    withStoredProcedures(database) {
-      sn => Ok(Json.toJson(sn.filterKeys( _ == (namespace, name)).map(kv => kv._1.toString -> kv._2)))
-    }
+    withStoredProcedures(database)(_.filterKeys(_ ==(namespace, name)))
   }
 
   def call(database: String, namespace: String, name: String) = Action(parse.json) { implicit request: Request[JsValue] =>
@@ -84,10 +79,10 @@ object RootController extends Controller {
         val snd = StoredProcedures.storedProcedures.get
         val sprocs = snd(Database.byName(database)).get((namespace, name))
         val possibleSps: Seq[StoredProcedure] = sprocs.map {
-            // what stored procedures can process the given incoming argument names?
-            _.filter { (sproc: StoredProcedure) =>
-              sproc.matches(obj.value.keys.toSet)
-            }
+          // what stored procedures can process the given incoming argument names?
+          _.filter { (sproc: StoredProcedure) =>
+            sproc.matches(obj.value.keys.toSet)
+          }
         }.getOrElse(Seq.empty)
 
         possibleSps.toList match {
