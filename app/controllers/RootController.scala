@@ -104,7 +104,11 @@ object RootController extends Controller {
                 }
               } yield storedProcedure.execute(sqlArgs)
             } match {
-              case Success(seq) => Ok(Json.parse(seq.mkString("[", ",", "]")))
+              case Success(seq) =>
+                // todo this is a performance crime against humanity.  We are getting back rows of json;
+                // what we should be doing here is just writing those strings out after setting the content-type
+                // correctly. I'm not exactly sure how to do that without doing some digging...
+                Ok(Json.parse(seq.mkString("[", ",", "]")))
               case Failure(e) => InternalServerError(views.json.error(e.toString))
             }
           case _ => BadRequest(views.json.error(s"Found multiple possible sprocs: $possibleSps"))

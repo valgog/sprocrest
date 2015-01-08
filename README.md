@@ -75,3 +75,5 @@ What things are still to be done:
   - [ ] sharding strategies
   - [ ] sharded result merging
   - [ ] 2PC
+- [ ] fix performance issue around serializing returned sproc json
+
