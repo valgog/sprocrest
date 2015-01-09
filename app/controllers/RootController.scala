@@ -77,8 +77,8 @@ object RootController extends Controller {
         implicit val db = Database.byName(database)
         implicit val types = StoredProcedures.types.get()(db)
 
-        val snd = StoredProcedures.storedProcedures.get
-        val sprocs = snd(Database.byName(database)).get((namespace, name))
+        val snd: Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]] = StoredProcedures.storedProcedures.get
+        val sprocs: Option[Seq[StoredProcedure]] = snd(Database.byName(database)).get((namespace, name))
         val possibleSps: Seq[StoredProcedure] = sprocs.map {
           // what stored procedures can process the given incoming argument names?
           _.filter { (sproc: StoredProcedure) =>
