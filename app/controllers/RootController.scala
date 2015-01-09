@@ -16,7 +16,7 @@ object RootController extends Controller {
   private def withTypes[A](databaseName: String)
                           (f: Map[OID, DbType] => Either[String, A])
                           (implicit writer: Writes[A]): Result = {
-    val typeMap = StoredProcedures.types.get
+    val typeMap: Map[Database, Map[OID, DbType]] = StoredProcedures.types.get
     val database = Database.byName(databaseName)
     typeMap.get(database).fold(NotFound(s"Database configuration for $databaseName not found"): Result) {
       m => f(m) match {
@@ -29,7 +29,7 @@ object RootController extends Controller {
   private def withStoredProcedures[A](databaseName: String)
                                      (f: Map[(Namespace, Name), Seq[StoredProcedure]] => A)
                                      (implicit writer: Writes[A]): Result = {
-    val procMap = StoredProcedures.storedProcedures.get()
+    val procMap: Map[Database, Map[(Namespace, Name), Seq[StoredProcedure]]] = StoredProcedures.storedProcedures.get()
     val database = Database.byName(databaseName)
     procMap.get(database).fold[Result](NotFound(s"Database configuration for $databaseName not found"))(m => Ok(Json.toJson(f(m))))
   }
