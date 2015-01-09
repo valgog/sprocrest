@@ -2,6 +2,7 @@ package controllers
 
 import database.CustomTypes.{Name, Namespace, OID}
 import database._
+import play.api.libs.iteratee.Enumerator
 import play.api.libs.json._
 import play.api.mvc._
 
@@ -105,10 +106,10 @@ object RootController extends Controller {
               } yield storedProcedure.execute(sqlArgs)
             } match {
               case Success(seq) =>
-                // todo this is a performance crime against humanity.  We are getting back rows of json;
-                // what we should be doing here is just writing those strings out after setting the content-type
-                // correctly. I'm not exactly sure how to do that without doing some digging...
-                Ok(Json.parse(seq.mkString("[", ",", "]")))
+                Result(
+                  ResponseHeader(200, Map(CONTENT_TYPE -> "application/json")),
+                  Enumerator(seq.mkString("[", ",", "]").getBytes("UTF-8"))
+                )
               case Failure(e) => InternalServerError(views.json.error(e.toString))
             }
           case _ => BadRequest(views.json.error(s"Found multiple possible sprocs: $possibleSps"))
