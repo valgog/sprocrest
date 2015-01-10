@@ -1,13 +1,14 @@
 package controllers
 
-import database.CustomTypes.{Name, Namespace, OID}
-import database.{Database, DbType, StoredProcedure}
 import play.api.libs.json._
 
 // mostly these are to avoid having to cast the keys to string (in which case
 // the built in Writers work ok. Feels like there should be an easier way.
 object Serializers {
 
+  /*
+  import database.CustomTypes.{Name, Namespace, OID}
+  import database.{Database, DbType, StoredProcedure}
   implicit val mapOidDbType = new Writes[Map[OID, DbType]] {
     override def writes(o: Map[OID, DbType]): JsValue = {
       JsObject {
@@ -47,4 +48,5 @@ object Serializers {
       }
     }
   }
+  */
 }

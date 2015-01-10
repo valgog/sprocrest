@@ -1,6 +1,6 @@
 package controllers
 
-import database.CustomTypes.{Name, Namespace, OID}
+//import database.CustomTypes.{Name, Namespace, OID}
 import database._
 import play.api.libs.iteratee.Enumerator
 import play.api.libs.json._
@@ -13,6 +13,7 @@ object RootController extends Controller {
 
   import controllers.Serializers._
 
+  /*
   private def withTypes[A](databaseName: String)
                           (f: Map[OID, DbType] => Either[String, A])
                           (implicit writer: Writes[A]): Result = {
@@ -117,6 +118,7 @@ object RootController extends Controller {
       case other => BadRequest(views.json.error(s"Expected a json object, found: $other"))
     }
   }
+  */
 }
 
 

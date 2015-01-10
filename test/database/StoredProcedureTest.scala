@@ -1,6 +1,5 @@
 package database
 
-import database.CustomTypes.OID
 import de.zalando.typemapper.postgres.{PgRow, PgArray}
 import PgRow.ROW
 import PgArray.ARRAY
@@ -11,7 +10,10 @@ import play.api.test.WithApplication
 
 class StoredProcedureTest extends Specification {
 
+
   "The stored procedures code" should {
+    /*
+    import database.CustomTypes.OID
     "convert simple types from json to sql-friendly types" in new WithApplication {
       def dbType(name: String) = DbType("pg_catalog", name, 0, None, None, "", None)
       StoredProcedures.simpleTypeConverter(dbType("int2"))(JsNumber(10)) must_== "10".toShort
@@ -90,5 +92,6 @@ class StoredProcedureTest extends Specification {
       val is = StoredProcedures.complexTypeConverter(table)(dbType)(obj)
       is must_== ROW(ARRAY(ROW("i'm a sku", "i'm a description"), ROW("i'm another sku", "i'm another description")))
     }
+  */
   }
 }

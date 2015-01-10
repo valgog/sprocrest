@@ -7,6 +7,7 @@ import play.api.test.{FakeRequest, WithApplication}
 
 class RootControllerTest extends Specification {
   "RootController" should {
+    /*
     "make an arbitrary call correctly" in new WithApplication {
       val res = route(FakeRequest(POST, "/call/sprocrest/test_api/get_orders").withJsonBody {
         Json.parse(
@@ -199,5 +200,6 @@ class RootControllerTest extends Specification {
 
       status(res) must_== 400
     }
+  */
   }
 }

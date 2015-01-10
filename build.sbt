@@ -19,10 +19,8 @@ libraryDependencies ++= Seq(
     ExclusionRule(organization = "org.postgresql"),
     ExclusionRule(organization = "org.hiberate"),
     ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")),
-  "com.typesafe.slick" %% "slick" % "2.1.0",
-  "com.typesafe.play" %% "play-slick" % "0.8.0",
+  "com.github.mauricio" %% "postgresql-async" % "0.2.15",
   "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
-  "com.edulify" %% "play-hikaricp" % "1.4.1",
   "com.gilt" %% "play-json-service-lib-2-3" % "1.0.0",
   "org.specs2" %% "specs2" % "2.3.11" % "test"
 )
